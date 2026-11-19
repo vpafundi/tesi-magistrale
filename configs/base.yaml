@@ -1,0 +1,53 @@
+# Shared defaults; override in configs/experiments/*.yaml
+# Paths use ${VAR} from environment or repo-relative fallbacks.
+
+experiment_id: replace_me
+extends: null
+
+paths:
+  root: ${TESI_REPO_ROOT}
+  output_root: ${TESI_OUTPUT_DIR}
+  data_root: ${TESI_DATA_DIR}
+
+dataset:
+  path: data/df_sample_all.parquet
+  text_column: ocr_surrogates
+  sample:
+    n: null
+    frac: null
+    seed: 42
+
+split:
+  strategy: holdout   # holdout | kfold
+  seed: 42
+  test_frac: 0.07
+  val_frac: 0.05
+  k: 5               # kfold only
+
+prompt:
+  version: minimal   # minimal | enriched_v1
+
+sequence:
+  max_seq_len_mode: manual   # manual | manual_plus_prompt | computed
+  max_seq_len: 15360
+  tokenizers:
+    - Qwen/Qwen3-1.7B
+    - HuggingFaceTB/SmolLM3-3B
+    - google/gemma-3-4b-it
+  headroom: 0.2
+  multiple: 1024
+  token_sample_rows: null  # null = all rows for computed mode (can be slow)
+
+runs:
+  classic:
+    - majority
+    - random
+    - tfidf_logreg
+  slm: []
+  eval_split: test
+  limit: null
+  seed: 42
+  gpu_mem: 0.85
+
+sync:
+  s3_prefix: ${TESI_S3_PREFIX}

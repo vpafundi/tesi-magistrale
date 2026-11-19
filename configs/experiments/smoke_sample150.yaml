@@ -1,0 +1,31 @@
+# Light experiment for local Mac: 150-row sample, classic baselines only, no SLM (vLLM).
+experiment_id: smoke_sample150
+extends: ../base.yaml
+
+dataset:
+  path: data/sample/df_sample_150.parquet
+  sample:
+    n: null
+    frac: null
+    seed: 42
+
+split:
+  strategy: holdout
+  seed: 42
+  test_frac: 0.1
+  val_frac: 0.1
+
+prompt:
+  version: minimal
+
+sequence:
+  max_seq_len_mode: manual
+  max_seq_len: 8192
+
+runs:
+  classic:
+    - majority
+    - random
+    - tfidf_logreg
+  slm: []
+  limit: 50

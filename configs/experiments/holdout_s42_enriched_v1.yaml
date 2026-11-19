@@ -1,0 +1,27 @@
+experiment_id: holdout_s42_enriched_v1
+extends: ../base.yaml
+
+dataset:
+  path: data/df_sample_all.parquet
+
+split:
+  strategy: holdout
+  seed: 42
+  test_frac: 0.07
+  val_frac: 0.05
+
+prompt:
+  version: enriched_v1
+
+sequence:
+  max_seq_len_mode: manual_plus_prompt
+  max_seq_len: 15360
+
+runs:
+  slm:
+    - model: Qwen/Qwen3-1.7B
+      modes: [constrained, free]
+    - model: HuggingFaceTB/SmolLM3-3B
+      modes: [constrained, free]
+    - model: google/gemma-3-4b-it
+      modes: [constrained, free]

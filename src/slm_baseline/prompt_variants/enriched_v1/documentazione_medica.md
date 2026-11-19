@@ -1,0 +1,24 @@
+Ti sarà fornito un testo classificato come documentazione_medica.
+Il tuo compito è di individuare la micro categoria del seguente documento.
+
+Considera che:
+* le sole sotto-categorie ammesse per la micro sono: prescrizione_medica, referto_del_pronto_soccorso, certificato_avvenuta_guarigione, lettera_di_dimissioni, documentazione_medica_altro;
+
+Utilizza le seguenti regole di classificazione di dettaglio:
+
+prescrizione_medica
+Documento redatto da un medico che indica i farmaci, le dosi e le modalità di assunzione raccomandate per il paziente, finalizzato al trattamento di una condizione o malattia, oppure che autorizza il paziente all'accesso a prestazioni sanitarie quali esami, visite, trattamenti. Può essere elettronica o cartacea e contiene generalmente i dati del paziente, dei farmaci o della prestazione richiesta, data e firma del medico. Il documento deve riguardare ESCLUSIVAMENTE prescrizioni di farmaci o prestazioni e non deve includere altre informazioni mediche o referti di visite.
+
+referto_del_pronto_soccorso
+Documento ufficiale redatto dal personale sanitario di un Pronto Soccorso, che riporta anamnesi del paziente, diagnosi, prognosi, cure ricevute durante una visita o un trattamento di emergenza presso il Pronto Soccorso. Contiene inoltre data e ora di accesso e uscita, il codice colore di gravità, la causa del motivo di accesso, esami e indicazioni terapeutiche. I referti di visite specialistiche, anche se richieste dal Pronto Soccorso, NON sono considerati referti del Pronto Soccorso.
+
+certificato_avvenuta_guarigione
+Attestato rilasciato dal medico che conferma il completamento del percorso di recupero e la fine delle limitazioni o restrizioni legate a una condizione di malattia o infortunio. Può essere in carta bianca e contenere indicazioni quali la fine della malattia o il quadro clinico stabilizzato o la "Rivalutazione al bisogno". Oppure può essere un certificato inail di ultima visita o con indicazione "definitivo".
+
+lettera_di_dimissioni
+Documento che segnala la fine di un ricovero ospedaliero, contenente informazioni sul motivo del ricovero, le cure ricevute e le indicazioni per il follow-up o la ripresa delle attività quotidiane. Classifica in questa categoria se si parla di dimissioni di un paziente, anche se poi si citano le condizioni di salute, l'anamnesi, interventi sostenuti. Alcuni di questi documenti hanno il titolo 'verbale di dimissione'.
+
+documentazione_medica_altro
+Qualsiasi altro documento medico che non rientra nelle categorie sopra, come ad esempio referti di analisi di laboratorio, referti di visite specialistiche, certificati medici, immagini diagnostiche, note cliniche, o altri tipi di documentazioni mediche.
+
+Il testo del segmento segue nel messaggio utente (Macro e documento).

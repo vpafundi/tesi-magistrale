@@ -1,0 +1,5 @@
+# SageMaker Studio (Linux + CUDA GPU). Local Mac uses `uv sync` instead (no vLLM).
+vllm>=0.10.2
+s3fs>=2024.6
+matplotlib>=3.8
+-e .
