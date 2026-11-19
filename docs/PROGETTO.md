@@ -119,7 +119,7 @@ Ogni run salva `predictions__<slug>.parquet` e `metrics__<slug>.json`. In modali
 4. **Compare** — `cli compare` aggrega in `outputs/comparison/summary.csv`; `slm_baseline.reporting.load_experiments` include righe aggregate k-fold (`__kfold_agg`).
 5. **Sync** — `cli sync` copia la cartella esperimento su S3 con `s3fs` (opzionale).
 
-Su SageMaker Studio: stesso repository, `pip install -r requirements-sagemaker.txt`, `export TESI_DATA_DIR=...` e `HF_TOKEN`, poi i comandi `cli` come in locale. Notebook `00`/`01` possono impostare `CONFIG_PATH` verso lo stesso YAML.
+Su SageMaker Studio: stesso repository, `uv sync --group sagemaker`, `export TESI_DATA_DIR=...` e `HF_TOKEN`, poi i comandi `cli` come in locale (o `uv run python -m slm_baseline.cli ...`). Notebook `00`/`01` possono impostare `CONFIG_PATH` verso lo stesso YAML.
 
 ## 6. Infrastruttura
 
@@ -151,7 +151,7 @@ Alternative valutate per l'istanza: `ml.g5.2xlarge` (A10G 24 GB) e `ml.g6.2xlarg
 
 ## 8. Prossimi passi
 
-1. **SageMaker, setup**: `pip install -r requirements-sagemaker.txt`, `HF_TOKEN`, licenza Gemma accettata.
+1. **SageMaker, setup**: `uv sync --group sagemaker`, `HF_TOKEN`, licenza Gemma accettata.
 2. **`00` sul dataset completo**: controllare la tabella dei segmenti più lunghi. Se il 100% + 20% supera il contesto nativo di Qwen3 (32k token), fissare un tetto e troncare solo quei casi.
 3. **`01` con `LIMIT = 50`** come smoke test reale di vLLM sui tre modelli, poi `LIMIT = None`.
 4. **Baseline encoder** (mmBERT o XLM-RoBERTa fine-tunato), nello stesso formato di output.

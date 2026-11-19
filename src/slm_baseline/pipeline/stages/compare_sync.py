@@ -92,7 +92,7 @@ class SyncPipeline:
             import s3fs
         except ImportError as e:
             self.logger.error("sync: s3fs not installed")
-            raise SyncConfigError("Installa s3fs per sync: pip install s3fs") from e
+            raise SyncConfigError("Installa s3fs: uv sync --group sagemaker") from e
         merged = load_merged_experiment_dict(exp_dir / CONFIG_NAME)
         cfg = ExperimentConfig.from_dict(merged)
         pre = (cfg.sync.s3_prefix or "").strip()

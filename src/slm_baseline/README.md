@@ -8,9 +8,9 @@ Package Python per classificazione **macro → micro** su segmenti OCR (baseline
 ## Comandi rapidi
 
 ```bash
-python -m slm_baseline.cli prepare --config configs/experiments/<nome>.yaml
-python -m slm_baseline.cli run      --config configs/experiments/<nome>.yaml
-python -m slm_baseline.cli compare
+uv run python -m slm_baseline.cli prepare --config configs/experiments/<nome>.yaml
+uv run python -m slm_baseline.cli run      --config configs/experiments/<nome>.yaml
+uv run python -m slm_baseline.cli compare
 ```
 
 ## Moduli principali

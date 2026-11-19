@@ -4,7 +4,8 @@
 
 ```bash
 cd /home/sagemaker-user/tesi-magistrale   # o path clone
-pip install -r requirements-sagemaker.txt
+# uv (se manca): curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --group sagemaker
 export HF_TOKEN=hf_...                   # Gemma
 export TESI_REPO_ROOT=$PWD
 export TESI_DATA_DIR=$PWD                # path YAML tipo data/df_sample_all.parquet
@@ -16,8 +17,8 @@ Copia il parquet completo in `data/df_sample_all.parquet` (non è in git).
 ## Opzione A — Solo CLI (consigliata)
 
 ```bash
-python -m slm_baseline.cli prepare --config configs/experiments/holdout_s42_minimal.yaml
-python -m slm_baseline.cli classic  --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli prepare --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli classic  --config configs/experiments/holdout_s42_minimal.yaml
 ```
 
 Artefatti: `outputs/experiments/holdout_s42_minimal/`.

@@ -37,6 +37,11 @@ eda = [
 dev = [
     "pytest>=8.0",
 ]
+# SageMaker Studio (CUDA + vLLM); su Mac locale non installare questo gruppo.
+sagemaker = [
+    "vllm>=0.10.2",
+    "s3fs>=2024.6",
+]
 
 [build-system]
 requires = ["hatchling"]

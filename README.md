@@ -64,12 +64,12 @@ export TESI_DATA_DIR=/path/al/dataset    # oppure default
 export TESI_OUTPUT_DIR=/path/agli/outputs
 export TESI_S3_PREFIX=s3://mio-bucket/tesi   # solo se usi sync
 
-python -m slm_baseline.cli prepare --config configs/experiments/holdout_s42_minimal.yaml
-python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml
-python -m slm_baseline.cli compare
-python -m slm_baseline.cli sync --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli prepare --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli compare
+uv run python -m slm_baseline.cli sync --config configs/experiments/holdout_s42_minimal.yaml
 # oppure tutti gli esperimenti con prefix S3 configurato:
-python -m slm_baseline.cli sync --all
+uv run python -m slm_baseline.cli sync --all
 ```
 
 Layout output: `outputs/experiments/<id>/` contiene `config.resolved.yaml`, `manifest.json`, `splits.parquet`, `run_config.json`, cartella `runs/` con `metrics__*` e `predictions__*`. Se rilanci `prepare` con un altro config nella stessa cartella, il comando si ferma (`--force` per sovrascrivere). Le run già presenti in `runs/` vengono saltate salvo `--rerun`.
@@ -90,8 +90,8 @@ Mettere il campione in `data/sample/df_sample_150.parquet` e il dataset EDA in `
 ### SageMaker Studio (`ml.g6e.2xlarge`)
 
 ```bash
-pip install -r requirements-sagemaker.txt
-export HF_TOKEN=hf_...   # licenza accettata su huggingface.co/google/gemma-3-4b-it
+uv sync --group sagemaker   # vLLM + s3fs + pacchetto in editable
+export HF_TOKEN=hf_...      # licenza accettata su huggingface.co/google/gemma-3-4b-it
 ```
 
 1. `notebooks/00_prepare_data_and_splits.ipynb` con `DATA_PATH` sul parquet completo (anche `s3://…`). Produce `data/splits_v1.parquet` e `data/run_config.json`.

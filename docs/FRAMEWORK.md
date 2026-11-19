@@ -89,8 +89,7 @@ experiment.yaml  →  prepare  →  outputs/experiments/<id>/
 
 ```bash
 cd tesi-magistrale
-uv sync --group dev    # core + pytest; per tokenizer/notebook anche gruppi preprocess/eval
-uv pip install -e .    # oppure già incluso con uv sync se il progetto è installato
+uv sync --group dev    # core + pytest; default-groups include preprocess/eval/eda
 ```
 
 - **Senza GPU:** `prepare`, `classic`, test pytest; **no** vLLM.
@@ -99,9 +98,11 @@ uv pip install -e .    # oppure già incluso con uv sync se il progetto è insta
 ### SageMaker (baseline SLM)
 
 ```bash
-pip install -r requirements-sagemaker.txt   # vllm, s3fs, -e .
+uv sync --group sagemaker   # vllm, s3fs, progetto installato (vedi pyproject.toml)
 export HF_TOKEN=...
 ```
+
+Se `uv` non è sul kernel Studio: `curl -LsSf https://astral.sh/uv/install.sh | sh` oppure `uv pip install -r requirements-sagemaker.txt`.
 
 ---
 
@@ -178,7 +179,7 @@ outputs/comparison/
 Entry point:
 
 ```bash
-python -m slm_baseline.cli [--output-root PATH] <comando> ...
+uv run python -m slm_baseline.cli [--output-root PATH] <comando> ...
 ```
 
 | Comando | Cosa fa | Flag utili |
@@ -193,12 +194,12 @@ python -m slm_baseline.cli [--output-root PATH] <comando> ...
 Esempi:
 
 ```bash
-python -m slm_baseline.cli prepare --config configs/experiments/smoke_sample150.yaml
-python -m slm_baseline.cli classic --config configs/experiments/smoke_sample150.yaml
-python -m slm_baseline.cli slm --config configs/experiments/holdout_s42_minimal.yaml --dry-run
-python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml
-python -m slm_baseline.cli compare
-python -m slm_baseline.cli sync --all
+uv run python -m slm_baseline.cli prepare --config configs/experiments/smoke_sample150.yaml
+uv run python -m slm_baseline.cli classic --config configs/experiments/smoke_sample150.yaml
+uv run python -m slm_baseline.cli slm --config configs/experiments/holdout_s42_minimal.yaml --dry-run
+uv run python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml
+uv run python -m slm_baseline.cli compare
+uv run python -m slm_baseline.cli sync --all
 ```
 
 Implementazione: [`src/slm_baseline/cli.py`](../src/slm_baseline/cli.py).
@@ -211,7 +212,7 @@ Implementazione: [`src/slm_baseline/cli.py`](../src/slm_baseline/cli.py).
 
 1. Parquet in `data/sample/df_sample_150.parquet`.
 2. `uv sync --group dev`
-3. `python -m slm_baseline.cli run --config configs/experiments/smoke_sample150.yaml`  
+3. `uv run python -m slm_baseline.cli run --config configs/experiments/smoke_sample150.yaml`  
    (`runs.slm: []` nel YAML — niente GPU.)
 
 ### Baseline SLM complete (Studio)
@@ -445,12 +446,12 @@ I nuovi esperimenti dovrebbero usare il flusso YAML + cartella `outputs/experime
 
 Checklist:
 
-1. Clone repo; `pip install -r requirements-sagemaker.txt`
+1. Clone repo; `uv sync --group sagemaker`
 2. `export HF_TOKEN=...` (Gemma gated)
 3. `export TESI_DATA_DIR=/home/sagemaker-user/data` (parquet completo o sync da S3)
 4. `export TESI_OUTPUT_DIR=/home/sagemaker-user/outputs` (disco Studio)
 5. Opzionale: `export TESI_S3_PREFIX=s3://.../tesi`
-6. `python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml`
+6. `uv run python -m slm_baseline.cli run --config configs/experiments/holdout_s42_minimal.yaml`
 7. Fine job: `cli compare` e `cli sync --all`
 
 Ogni modello SLM è un **processo separato** (memoria GPU liberata tra un modello e l'altro).
