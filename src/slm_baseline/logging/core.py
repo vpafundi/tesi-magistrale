@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import TextIO
 
@@ -11,10 +12,18 @@ PIPELINE_LOGGER_NAME = "slm_baseline.pipeline"
 _configured = False
 
 
+def pipeline_log_level(default: int = logging.INFO) -> int:
+    """Legge ``TESI_LOG_LEVEL`` (DEBUG, INFO, WARNING, …)."""
+    raw = os.environ.get("TESI_LOG_LEVEL", "").strip().upper()
+    if not raw:
+        return default
+    return getattr(logging, raw, default)
+
+
 def setup_pipeline_logger(
     logger: logging.Logger | None = None,
     *,
-    level: int = logging.INFO,
+    level: int | None = None,
     stream: TextIO | None = None,
     name: str = PIPELINE_LOGGER_NAME,
 ) -> logging.Logger:
@@ -30,13 +39,14 @@ def setup_pipeline_logger(
         Logger pronto per ``info`` / ``error`` in orchestrator, stage e CLI.
     """
     global _configured
+    resolved = pipeline_log_level(logging.INFO) if level is None else level
     log = logger or logging.getLogger(name)
-    log.setLevel(level)
+    log.setLevel(resolved)
     if stream is None:
         stream = sys.stderr
     if not log.handlers:
         handler = logging.StreamHandler(stream)
-        handler.setLevel(level)
+        handler.setLevel(resolved)
         handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -46,6 +56,9 @@ def setup_pipeline_logger(
         log.addHandler(handler)
         log.propagate = False
         _configured = True
+    else:
+        for h in log.handlers:
+            h.setLevel(resolved)
     return log
 
 

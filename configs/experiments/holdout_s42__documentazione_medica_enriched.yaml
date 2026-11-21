@@ -1,0 +1,34 @@
+# Prod candidate v2: enriched macro rules + balanced SFT train (stesso split master).
+experiment_id: holdout_s42__documentazione_medica_enriched
+extends: holdout_s42_minimal.yaml
+
+scope:
+  macro_category: documentazione_medica
+
+split:
+  assignment_from: holdout_s42_minimal
+
+prompt:
+  version: enriched_v1
+
+sequence:
+  max_seq_len_mode: manual_plus_prompt
+  max_seq_len: 15360
+
+runs:
+  slm:
+    - model: Qwen/Qwen3-1.7B
+      modes: [constrained]
+
+training:
+  enabled: true
+  base_model: Qwen/Qwen3-1.7B
+  unsloth:
+    max_seq_len: 8192
+    batch_size: 2
+    grad_accum: 8
+  sampling:
+    enabled: true
+    seed: 42
+    max_altro: 3000
+    min_non_altro: 500

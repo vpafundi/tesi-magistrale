@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from ..artifacts.io import load_json, write_json
@@ -28,9 +30,14 @@ class SubprocessTrainRunner:
             self.logger.info("train dry-run: %s", " ".join(cmd))
             return
         self.logger.info("train launch: %s", " ".join(cmd))
-        proc = subprocess.run(cmd, check=False)
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        t0 = time.perf_counter()
+        proc = subprocess.run(cmd, check=False, env=env)
+        elapsed = time.perf_counter() - t0
         if proc.returncode != 0:
+            self.logger.error("train failed: exit=%s after %.1fs", proc.returncode, elapsed)
             raise TrainRunnerError(f"run_unsloth failed: {' '.join(cmd)}", proc.returncode)
+        self.logger.info("train subprocess finished in %.1fs", elapsed)
 
 
 class TrainLoRAPipeline:
@@ -51,6 +58,14 @@ class TrainLoRAPipeline:
             raise TrainRunnerError("training.base_model o runs.slm[0].model richiesto")
 
         prompt_version = str(run_cfg.get("prompt_version", ctx.cfg.prompt.version))
+        samp = ctx.cfg.training.sampling
+        if samp.enabled:
+            ctx.logger.info(
+                "train: sampling enabled max_altro=%s min_non_altro=%s seed=%s",
+                samp.max_altro,
+                samp.min_non_altro,
+                samp.seed,
+            )
         train_p, val_p, n_train, n_val = export_sft_jsonl(ctx.cfg, exp_dir=ctx.exp_dir, prompt_version=prompt_version)
         ctx.logger.info("train: jsonl train=%s val=%s rows=%s/%s", train_p, val_p, n_train, n_val)
 
@@ -65,6 +80,7 @@ class TrainLoRAPipeline:
         u = ctx.cfg.training.unsloth
         cmd = [
             self.runner.python,
+            "-u",
             "-m",
             "slm_baseline.training.run_unsloth",
             "--base-model",

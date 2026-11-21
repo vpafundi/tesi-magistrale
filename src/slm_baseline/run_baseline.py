@@ -143,7 +143,13 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     p.add_argument("--rerun", action="store_true")
     p.add_argument("--lora-adapter", default=None, help="Directory adapter LoRA per inferenza vLLM")
     args = p.parse_args(argv)
-    log.info("run_baseline: model=%s mode=%s experiment_dir=%s", args.model, args.mode, args.experiment_dir)
+    log.info(
+        "run_baseline: start model=%s mode=%s experiment_dir=%s lora=%s",
+        args.model,
+        args.mode,
+        args.experiment_dir,
+        args.lora_adapter or "(none)",
+    )
 
     exp_dir: Path | None = Path(args.experiment_dir).resolve() if args.experiment_dir else None
     manifest: dict[str, Any] = {}
@@ -234,8 +240,20 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
         df = attach_splits(segments, splits_df)
 
     eval_df = df[df["split"] == eval_split].sort_values("record_key").reset_index(drop=True)
+    n_eval_before_limit = len(eval_df)
     if limit:
         eval_df = eval_df.sample(n=min(int(limit), len(eval_df)), random_state=seed).reset_index(drop=True)
+    scope_macro = manifest.get("scope_macro") or run_cfg.get("scope_macro")
+    macros = sorted(eval_df["macro_category"].unique().tolist()) if len(eval_df) else []
+    log.info(
+        "run_baseline: data eval_split=%s n_eval=%s (pool=%s) scope_macro=%s macros=%s dropped_empty=%s",
+        eval_split,
+        len(eval_df),
+        n_eval_before_limit,
+        scope_macro,
+        macros,
+        len(dropped),
+    )
 
     use_lora = bool(args.lora_adapter)
     slug = run_slug(args.model, args.mode, max_seq_len, fold_id if strategy == "kfold" else None, lora=use_lora)
@@ -243,6 +261,15 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     if metrics_path.is_file() and not args.rerun:
         log.info("run_baseline: skip %s (metrics exist, use --rerun)", slug)
         return
+
+    log.info(
+        "run_baseline: config slug=%s max_seq_len=%s prompt=%s gpu_mem=%.2f seed=%s",
+        slug,
+        max_seq_len,
+        prompt_version,
+        gpu_mem,
+        seed,
+    )
 
     from vllm import LLM
 
@@ -252,6 +279,12 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     if use_lora:
         llm_kwargs["enable_lora"] = True
         llm_kwargs["max_lora_rank"] = 64
+    log.info(
+        "run_baseline: loading vLLM model=%s revision=%s (download/init can take several minutes)",
+        args.model,
+        args.revision,
+    )
+    t_load = time.perf_counter()
     llm = LLM(
         model=args.model,
         revision=args.revision,
@@ -262,6 +295,7 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
         enable_prefix_caching=True,
         **llm_kwargs,
     )
+    log.info("run_baseline: vLLM ready in %.1fs", time.perf_counter() - t_load)
     lora_request = None
     if use_lora:
         from vllm.lora.request import LoRARequest
@@ -279,13 +313,26 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
             prompt_version=prompt_version,
         )
 
+    log.info("run_baseline: building prompts (max_seq_len=%s) ...", max_seq_len)
     prompts = build_prompts(tokenizer, eval_df, max_seq_len, few_shot=few_shot, prompt_version=prompt_version)
+    trunc_rate = float(prompts["truncated"].mean()) if len(prompts) else 0.0
+    log.info(
+        "run_baseline: prompts n=%s mean_tokens=%.1f trunc_rate=%.3f",
+        len(prompts),
+        float(prompts["prompt_tokens"].mean()) if len(prompts) else 0.0,
+        trunc_rate,
+    )
     constrained = args.mode.endswith("constrained")
     params = [
         _sampling_params(MICRO_PER_MACRO[m] if constrained else None, 16 if constrained else 32, seed)
         for m in eval_df["macro_category"]
     ]
 
+    log.info(
+        "run_baseline: inference start n=%s constrained=%s (vLLM progress bar on stdout)",
+        len(prompts),
+        constrained,
+    )
     t0 = time.perf_counter()
     prompts_payload = [{"prompt_token_ids": ids} for ids in prompts["prompt_token_ids"]]
     gen_kw: dict[str, Any] = {}
@@ -293,6 +340,7 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
         gen_kw["lora_request"] = lora_request
     outputs = llm.generate(prompts_payload, params, use_tqdm=True, **gen_kw)
     elapsed = time.perf_counter() - t0
+    log.info("run_baseline: inference done in %.1fs (%.2f ex/s)", elapsed, len(prompts) / elapsed if elapsed else 0)
 
     raw = [o.outputs[0].text for o in outputs]
     pred_df = eval_df[["record_key", "document_id", "macro_category", "sub_category"]].copy()
@@ -342,13 +390,14 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     eps = run_info["examples_per_s"]
     eps_s = f"{eps:.1f}" if eps is not None else "n/a"
     log.info(
-        "%s: acc=%.4f macro_f1=%.4f invalid=%.4f n=%s %s ex/s",
+        "run_baseline: done %s acc=%.4f macro_f1=%.4f invalid=%.4f n=%s throughput=%s ex/s out=%s",
         slug,
         metrics["accuracy"],
         metrics["macro_f1"],
         metrics["invalid_rate"],
         metrics["n"],
         eps_s,
+        metrics_path,
     )
 
 

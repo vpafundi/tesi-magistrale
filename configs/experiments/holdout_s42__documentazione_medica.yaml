@@ -9,4 +9,4 @@ split:
 
 training:
   enabled: true
-  base_model: google/gemma-3-4b-it
+  base_model: Qwen/Qwen3-1.7B

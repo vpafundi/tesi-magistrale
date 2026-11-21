@@ -95,8 +95,17 @@ class ClassicEvaluatePipeline:
 
             train_df = df[df["split"] == "train"]
             test_df = df[df["split"] == eval_split].sort_values("record_key").reset_index(drop=True)
+            n_test_pool = len(test_df)
             if limit is not None and len(test_df) > limit:
                 test_df = test_df.sample(n=min(limit, len(test_df)), random_state=seed).reset_index(drop=True)
+            ctx.logger.info(
+                "classic: fold=%s train=%s test=%s (pool=%s) scope=%s",
+                fold_id,
+                len(train_df),
+                len(test_df),
+                n_test_pool,
+                ctx.cfg.scope.macro_category,
+            )
 
             manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else ctx.manifest
             comparable = (
@@ -137,8 +146,14 @@ class ClassicEvaluatePipeline:
                     **exp_fields,
                 }
                 ctx.paths.runs.mkdir(parents=True, exist_ok=True)
-                save_run(ctx.paths.runs, slug, pred_df, run_info)
-                ctx.logger.info("classic: done %s", slug)
+                metrics = save_run(ctx.paths.runs, slug, pred_df, run_info)
+                ctx.logger.info(
+                    "classic: done %s acc=%.4f macro_f1=%.4f n=%s",
+                    slug,
+                    metrics["accuracy"],
+                    metrics["macro_f1"],
+                    metrics["n"],
+                )
 
         if strategy == "kfold":
             for fi in range(ctx.cfg.split.k):

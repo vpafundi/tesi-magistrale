@@ -28,12 +28,26 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from ..logging.core import setup_pipeline_logger
+
+    log = setup_pipeline_logger()
     args = _parse_args(argv)
+    log.info(
+        "run_unsloth: start base_model=%s train=%s val=%s epochs=%s max_seq_len=%s out=%s",
+        args.base_model,
+        args.train_jsonl,
+        args.val_jsonl,
+        args.epochs,
+        args.max_seq_len,
+        args.output_dir,
+    )
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = Path(args.metrics_out)
 
     try:
+        import unsloth  # noqa: F401 — before trl/transformers (Unsloth patches)
+
         from datasets import load_dataset
         from trl import SFTConfig, SFTTrainer
         from unsloth import FastLanguageModel
@@ -43,6 +57,7 @@ def main(argv: list[str] | None = None) -> None:
             "Su SageMaker: uv sync --no-default-groups --group train --group sagemaker"
         ) from exc
 
+    log.info("run_unsloth: loading base model (may download weights) ...")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.base_model,
         max_seq_length=args.max_seq_len,
@@ -85,17 +100,23 @@ def main(argv: list[str] | None = None) -> None:
         load_best_model_at_end=eval_ds is not None,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
+        max_length=args.max_seq_len,
+        dataset_text_field="text",
     )
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         args=sft_args,
-        dataset_text_field="text",
-        max_seq_length=args.max_seq_len,
     )
+    log.info("run_unsloth: training ...")
     train_result = trainer.train()
+    log.info(
+        "run_unsloth: training finished loss=%.4f steps=%s",
+        train_result.training_loss,
+        train_result.global_step,
+    )
     model.save_pretrained(str(out_dir))
     tokenizer.save_pretrained(str(out_dir))
 

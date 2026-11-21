@@ -184,11 +184,22 @@ class UnslothTrainingConfig:
 
 
 @dataclass
+class TrainSamplingConfig:
+    """Resampling train SFT (val invariato). Cap ``*_altro``; boost micro rare."""
+
+    enabled: bool = False
+    seed: int = 42
+    max_altro: int | None = None
+    min_non_altro: int | None = None
+
+
+@dataclass
 class TrainingConfig:
     enabled: bool = False
     base_model: str = ""
     output_subdir: str = "adapters"
     unsloth: UnslothTrainingConfig = field(default_factory=UnslothTrainingConfig)
+    sampling: TrainSamplingConfig = field(default_factory=TrainSamplingConfig)
 
 
 @dataclass
@@ -225,6 +236,7 @@ class ExperimentConfig:
         split_raw = dict(d.get("split") or {})
         training_raw = d.get("training") or {}
         unsloth_raw = training_raw.get("unsloth") or {}
+        sampling_raw = training_raw.get("sampling") or {}
         return cls(
             experiment_id=d["experiment_id"],
             paths=PathsConfig(**d.get("paths", {})),
@@ -241,6 +253,9 @@ class ExperimentConfig:
                 output_subdir=str(training_raw.get("output_subdir", "adapters")),
                 unsloth=UnslothTrainingConfig(
                     **{k: unsloth_raw[k] for k in UnslothTrainingConfig.__dataclass_fields__ if k in unsloth_raw}
+                ),
+                sampling=TrainSamplingConfig(
+                    **{k: sampling_raw[k] for k in TrainSamplingConfig.__dataclass_fields__ if k in sampling_raw}
                 ),
             ),
         )

@@ -6,10 +6,14 @@
 cd /home/sagemaker-user/tesi-magistrale   # o path clone
 # uv (se manca): curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync --no-default-groups --group sagemaker
-export HF_TOKEN=hf_...                   # Gemma
+# LoRA + vLLM:
+uv sync --no-default-groups --group train --group sagemaker
+export VLLM_USE_FLASHINFER_SAMPLER=0   # Studio senza CUDA toolkit headers
+export HF_TOKEN=hf_...                   # Gemma / rate limit Hub
 export TESI_REPO_ROOT=$PWD
 export TESI_DATA_DIR=$PWD                # path YAML tipo data/df_sample_all.parquet
 export TESI_OUTPUT_DIR=$PWD/outputs
+export TESI_LOG_LEVEL=INFO    # oppure DEBUG per più dettaglio pipeline/SLM
 ```
 
 Copia il parquet completo in `data/df_sample_all.parquet` (non è in git).
@@ -36,10 +40,18 @@ uv run python -m slm_baseline.cli classic  --config configs/experiments/holdout_
 
 YAML figli: `holdout_s42__denuncia`, `holdout_s42__documentazione_medica`, `holdout_s42__documento_di_spesa`, `holdout_s42__documento_di_spesa_medica`.
 
-Training LoRA (Studio, gruppo `train`):
+Training LoRA (Studio, gruppo `train`; usa `tmux` per sessioni lunghe):
 
 ```bash
 uv run python -m slm_baseline.cli train --config configs/experiments/holdout_s42__documentazione_medica.yaml --dry-run
+```
+
+Esperimento **enriched + bilanciamento train** (prompt `enriched_v1`, cap `*_altro`):
+
+```bash
+uv run python -m slm_baseline.cli prepare --config configs/experiments/holdout_s42__documentazione_medica_enriched.yaml
+uv run python -m slm_baseline.cli train --config configs/experiments/holdout_s42__documentazione_medica_enriched.yaml
+uv run python -m slm_baseline.cli slm --config configs/experiments/holdout_s42__documentazione_medica_enriched.yaml --rerun
 ```
 
 Metriche globali (dopo SLM su tutte le macro, stesso slug):

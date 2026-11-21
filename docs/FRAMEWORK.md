@@ -132,7 +132,7 @@ Sezioni principali:
 | `scope` | `macro_category`: filtra segmenti subito dopo il perimetro (prepare + classic + train) |
 | `dataset` | `path`, `text_column`, `sample: {n, frac, seed}` |
 | `split` | `strategy`, `seed`, `test_frac`, `val_frac`, `k`, `assignment_from` (id master per ereditare split) |
-| `training` | `enabled`, `base_model`, `unsloth.*` per LoRA (Unsloth) |
+| `training` | `enabled`, `base_model`, `unsloth.*` (LoRA), `sampling.*` (cap `*_altro`, oversample micro) |
 | `prompt` | `version: minimal \| enriched_v1` |
 | `sequence` | `max_seq_len_mode`, `max_seq_len`, `tokenizers`, `headroom`, `multiple`, `token_sample_rows` |
 | `runs` | `classic`, `slm: [{model, modes}]`, `eval_split`, `limit`, `seed`, `gpu_mem` |

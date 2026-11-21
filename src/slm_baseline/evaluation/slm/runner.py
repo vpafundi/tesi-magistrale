@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from ...artifacts.io import load_json
@@ -73,6 +75,7 @@ class SubprocessVllmRunner:
         log = logger or self.logger
         cmd = [
             self.python,
+            "-u",
             "-m",
             "slm_baseline.run_baseline",
             "--experiment-dir",
@@ -90,11 +93,26 @@ class SubprocessVllmRunner:
             log.info("slm dry-run: %s", " ".join(cmd))
             return
         log.info("slm launch: %s", " ".join(cmd))
-        proc = subprocess.run(cmd, check=False)
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        t0 = time.perf_counter()
+        proc = subprocess.run(cmd, check=False, env=env)
+        elapsed = time.perf_counter() - t0
         if proc.returncode != 0:
-            log.error("slm failed: exit=%s cmd=%s", proc.returncode, " ".join(cmd))
+            log.error(
+                "slm failed: exit=%s after %.1fs cmd=%s",
+                proc.returncode,
+                elapsed,
+                " ".join(cmd),
+            )
             raise SlmRunnerError(f"run_baseline failed: {' '.join(cmd)}", proc.returncode)
-        log.info("slm finished: model=%s mode=%s fold=%s", model, mode, fold_id)
+        log.info(
+            "slm finished: model=%s mode=%s fold=%s lora=%s elapsed=%.1fs",
+            model,
+            mode,
+            fold_id,
+            lora_adapter or "(none)",
+            elapsed,
+        )
 
 
 class SlmEvaluatePipeline:
@@ -137,6 +155,13 @@ class SlmEvaluatePipeline:
             if (ctx.paths.runs / f"metrics__{slug}.json").is_file() and not ctx.rerun:
                 ctx.logger.info("slm: skip %s (metrics exist)", slug)
                 return
+            ctx.logger.info(
+                "slm: queue slug=%s model=%s mode=%s lora=%s",
+                slug,
+                model,
+                mode,
+                lora_adapter or "(none)",
+            )
             self.runner.launch(
                 exp_dir,
                 model,

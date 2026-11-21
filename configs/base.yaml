@@ -41,6 +41,11 @@ training:
     learning_rate: 2.0e-4
     max_seq_len: null
     early_stopping_patience: 2
+  sampling:
+    enabled: false
+    seed: 42
+    max_altro: null
+    min_non_altro: null
 
 prompt:
   version: minimal   # minimal | enriched_v1

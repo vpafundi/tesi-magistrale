@@ -10,6 +10,7 @@ import pandas as pd
 from ..data.core import attach_splits, load_segments_cured
 from ..config.experiment import ExperimentConfig
 from ..prompt.core import build_messages
+from .sampling import apply_train_sampling
 
 
 def _rows_to_jsonl(df: pd.DataFrame, prompt_version: str) -> list[dict]:
@@ -46,6 +47,7 @@ def export_sft_jsonl(
     merged = attach_splits(segments, splits)
     train_df = merged[merged["split"] == "train"]
     val_df = merged[merged["split"] == "val"]
+    train_df = apply_train_sampling(train_df, cfg.training.sampling)
     train_path = train_path or exp_dir / "training" / "train.jsonl"
     val_path = val_path or exp_dir / "training" / "val.jsonl"
     write_jsonl(_rows_to_jsonl(train_df, prompt_version), train_path)
