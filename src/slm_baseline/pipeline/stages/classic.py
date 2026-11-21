@@ -6,15 +6,7 @@ import pandas as pd
 
 from ...artifacts.io import load_json
 from ...artifacts.reporting import save_run
-from ...config.experiment import resolved_dataset_path
-from ...data.core import (
-    apply_kfold_assignments,
-    attach_splits,
-    filter_perimeter,
-    load_segments,
-    prepare_text,
-    sample_dataset,
-)
+from ...data.core import apply_kfold_assignments, attach_splits, load_segments_cured
 from ...evaluation.classic.registry import ClassicMethodRegistry
 from ...pipeline.context import ExperimentContext
 from ...pipeline.exceptions import PrepareArtifactsMissingError
@@ -49,13 +41,7 @@ class DatasetLoader:
         Returns:
             DataFrame pronto per merge con ``splits.parquet``.
         """
-        ds_path = resolved_dataset_path(ctx.cfg)
-        segments, _ = filter_perimeter(load_segments(ds_path))
-        samp = ctx.cfg.dataset.sample
-        segments = sample_dataset(
-            segments, samp.get("n"), samp.get("frac"), seed=int(samp.get("seed", 42))
-        )
-        segments, _ = prepare_text(segments, ctx.cfg.dataset.text_column)
+        segments, _, _ = load_segments_cured(ctx.cfg)
         return segments
 
 
@@ -113,14 +99,21 @@ class ClassicEvaluatePipeline:
                 test_df = test_df.sample(n=min(limit, len(test_df)), random_state=seed).reset_index(drop=True)
 
             manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else ctx.manifest
+            comparable = (
+                manifest.get("comparable_group")
+                or manifest.get("parent_splits_hash")
+                or manifest.get("splits_hash")
+            )
             exp_fields = {
                 "experiment_id": ctx.cfg.experiment_id,
                 "config_hash": manifest.get("config_hash"),
                 "split_hash": manifest.get("splits_hash"),
+                "scope_macro": manifest.get("scope_macro"),
                 "prompt_version": run_cfg.get("prompt_version"),
                 "fold": fold_id,
-                "comparable_group": manifest.get("splits_hash"),
+                "comparable_group": comparable,
             }
+            macro_scope = ctx.cfg.scope.macro_category
 
             for method in ctx.cfg.runs.classic:
                 slug = classic_slug(method, fold_id)
@@ -128,7 +121,7 @@ class ClassicEvaluatePipeline:
                 if metrics_path.is_file() and not ctx.rerun:
                     ctx.logger.info("classic: skip %s (metrics exist)", slug)
                     continue
-                pred = self.registry.predict(method, train_df, test_df, seed)
+                pred = self.registry.predict(method, train_df, test_df, seed, macro_scope=macro_scope)
                 pred_df = test_df[["record_key", "document_id", "macro_category", "sub_category"]].copy()
                 pred_df["pred"] = pred.values
                 pred_df["raw_output"] = ""

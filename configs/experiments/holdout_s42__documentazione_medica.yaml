@@ -1,0 +1,12 @@
+experiment_id: holdout_s42__documentazione_medica
+extends: holdout_s42_minimal.yaml
+
+scope:
+  macro_category: documentazione_medica
+
+split:
+  assignment_from: holdout_s42_minimal
+
+training:
+  enabled: true
+  base_model: google/gemma-3-4b-it

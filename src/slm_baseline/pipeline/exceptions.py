@@ -5,6 +5,18 @@ class PipelineError(Exception):
     """Errore atteso nel flusso prepare / evaluate / sync."""
 
 
+class InvalidMacroScopeError(PipelineError):
+    """``scope.macro_category`` non presente in :data:`~slm_baseline.domain.labels.MICRO_PER_MACRO`."""
+
+
+class EmptyScopeMacroError(PipelineError):
+    """Dopo il filtro macro non restano segmenti nel dataset."""
+
+
+class MasterSplitsNotFoundError(PipelineError):
+    """``split.assignment_from`` referenzia un esperimento senza ``splits.parquet``."""
+
+
 class DatasetNotFoundError(PipelineError):
     """Il parquet configurato in ``dataset.path`` non esiste sul filesystem."""
 
@@ -36,6 +48,14 @@ class PrepareArtifactsMissingError(PipelineError):
 
 class UnknownClassicMethodError(PipelineError):
     """Nome in ``runs.classic`` non registrato in :class:`~slm_baseline.evaluation.classic.registry.ClassicMethodRegistry`."""
+
+
+class TrainRunnerError(PipelineError):
+    """Sottoprocesso ``run_unsloth`` terminato con codice non zero."""
+
+    def __init__(self, message: str, returncode: int | None = None) -> None:
+        super().__init__(message)
+        self.returncode = returncode
 
 
 class SlmRunnerError(PipelineError):

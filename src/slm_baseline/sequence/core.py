@@ -126,6 +126,7 @@ def compute_max_seq_len_for_experiment(
     multiple: int,
     prompt_version: str,
     token_sample_rows: int | None,
+    macros: list[str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """Resolve final max_seq_len from config. Returns (value, debug dict)."""
     debug: dict[str, Any] = {"mode": mode, "base_max_seq_len": base_max_seq_len}
@@ -134,9 +135,10 @@ def compute_max_seq_len_for_experiment(
 
     tok_list = tokenizer_ids
     overhead_by_model: dict[str, int] = {}
+    macro_list = macros or list(MICRO_PER_MACRO.keys())
     for tid in tok_list:
         tok = _load_hf_tokenizer(tid)
-        overhead_by_model[tid] = _max_prompt_overhead_tokens(tok, prompt_version=prompt_version)
+        overhead_by_model[tid] = _max_prompt_overhead_tokens(tok, macro_list, prompt_version=prompt_version)
     max_over = max(overhead_by_model.values()) if overhead_by_model else 0
     debug["max_prompt_overhead_tokens"] = overhead_by_model
 

@@ -129,8 +129,10 @@ Sezioni principali:
 | Sezione | Campi chiave |
 |---------|----------------|
 | `experiment_id` | Nome cartella sotto `outputs/experiments/` |
+| `scope` | `macro_category`: filtra segmenti subito dopo il perimetro (prepare + classic + train) |
 | `dataset` | `path`, `text_column`, `sample: {n, frac, seed}` |
-| `split` | `strategy: holdout \| kfold`, `seed`, `test_frac`, `val_frac`, `k` (solo kfold) |
+| `split` | `strategy`, `seed`, `test_frac`, `val_frac`, `k`, `assignment_from` (id master per ereditare split) |
+| `training` | `enabled`, `base_model`, `unsloth.*` per LoRA (Unsloth) |
 | `prompt` | `version: minimal \| enriched_v1` |
 | `sequence` | `max_seq_len_mode`, `max_seq_len`, `tokenizers`, `headroom`, `multiple`, `token_sample_rows` |
 | `runs` | `classic`, `slm: [{model, modes}]`, `eval_split`, `limit`, `seed`, `gpu_mem` |
@@ -186,9 +188,11 @@ uv run python -m slm_baseline.cli [--output-root PATH] <comando> ...
 |---------|---------|------------|
 | `prepare` | Carica parquet, perimetro, sample, split, calcola `max_seq_len`, scrive cartella esperimento | `--config`, `--force` |
 | `classic` | `majority`, `random`, `tfidf_logreg` su `runs.eval_split` | `--config`, `--rerun` |
-| `slm` | Per ogni voce in `runs.slm` lancia `python -m slm_baseline.run_baseline --experiment-dir ...` | `--config`, `--rerun`, `--dry-run` |
+| `train` | Export JSONL + subprocess Unsloth se `training.enabled` | `--config`, `--rerun`, `--dry-run` |
+| `slm` | Subprocess vLLM (`--lora-adapter` se adapter in manifest) | `--config`, `--rerun`, `--dry-run` |
 | `run` | `prepare` + `classic` + `slm` in sequenza | `--force`, `--rerun` |
 | `compare` | Scansiona tutti gli esperimenti, stampa tabella, salva `comparison/summary.csv` | (usa `TESI_OUTPUT_DIR` o `--output-root`) |
+| `compare-family` | Unisce predizioni `holdout_s42__*` e metriche globali | `--slug`, `--family-prefix` |
 | `sync` | Copia ricorsiva cartella esperimento su `sync.s3_prefix/experiments/<id>` (s3fs) | `--config` oppure `--all` |
 
 Esempi:

@@ -22,7 +22,8 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .data import apply_kfold_assignments, attach_splits, filter_perimeter, load_segments, prepare_text
+from .config.experiment import ExperimentConfig
+from .data import apply_kfold_assignments, attach_splits, load_segments_cured
 from .logging.core import setup_pipeline_logger
 from .inference import CHAT_TEMPLATE_KWARGS, build_prompts, parse_free_output, select_few_shot
 from .labels import MICRO_PER_MACRO
@@ -37,11 +38,12 @@ _SPLITS = "splits.parquet"
 _CONFIG_RESOLVED = "config.resolved.yaml"
 
 
-def run_slug(model: str, mode: str, max_seq_len: int, fold_id: int | None = None) -> str:
+def run_slug(model: str, mode: str, max_seq_len: int, fold_id: int | None = None, *, lora: bool = False) -> str:
     base = model.split("/")[-1]
+    lora_sfx = "__lora" if lora else ""
     if fold_id is None:
-        return f"{base}__{mode}__L{max_seq_len}"
-    return f"{base}__{mode}__L{max_seq_len}__fold{fold_id}"
+        return f"{base}__{mode}__L{max_seq_len}{lora_sfx}"
+    return f"{base}__{mode}__L{max_seq_len}__fold{fold_id}{lora_sfx}"
 
 
 def _sampling_params(allowed: list[str] | None, max_tokens: int, seed: int) -> Any:
@@ -139,6 +141,7 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     p.add_argument("--fold", type=int, default=None, help="Indice fold (kfold)")
     p.add_argument("--prompt-version", default=None)
     p.add_argument("--rerun", action="store_true")
+    p.add_argument("--lora-adapter", default=None, help="Directory adapter LoRA per inferenza vLLM")
     args = p.parse_args(argv)
     log.info("run_baseline: model=%s mode=%s experiment_dir=%s", args.model, args.mode, args.experiment_dir)
 
@@ -205,8 +208,17 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
         val_frac = 0.05
         split_seed = 42
 
-    segments, _ = filter_perimeter(load_segments(data_path))
-    segments, dropped = prepare_text(segments, text_column)
+    dropped = pd.DataFrame()
+    if exp_dir is not None and (exp_dir / _CONFIG_RESOLVED).is_file():
+        with open(exp_dir / _CONFIG_RESOLVED, encoding="utf-8") as f:
+            yaml_cfg = yaml.safe_load(f) or {}
+        cfg = ExperimentConfig.from_dict(yaml_cfg)
+        segments, dropped, _ = load_segments_cured(cfg)
+    else:
+        from .data import filter_perimeter, load_segments, prepare_text
+
+        segments, _ = filter_perimeter(load_segments(data_path))
+        segments, dropped = prepare_text(segments, text_column)
     splits_df = pd.read_parquet(splits_path)
 
     if exp_dir is not None and strategy == "kfold":
@@ -225,7 +237,8 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     if limit:
         eval_df = eval_df.sample(n=min(int(limit), len(eval_df)), random_state=seed).reset_index(drop=True)
 
-    slug = run_slug(args.model, args.mode, max_seq_len, fold_id if strategy == "kfold" else None)
+    use_lora = bool(args.lora_adapter)
+    slug = run_slug(args.model, args.mode, max_seq_len, fold_id if strategy == "kfold" else None, lora=use_lora)
     metrics_path = Path(out_dir) / f"metrics__{slug}.json"
     if metrics_path.is_file() and not args.rerun:
         log.info("run_baseline: skip %s (metrics exist, use --rerun)", slug)
@@ -236,6 +249,9 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     llm_kwargs: dict[str, Any] = {}
     if "gemma-3" in args.model.lower():
         llm_kwargs["limit_mm_per_prompt"] = {"image": 0}
+    if use_lora:
+        llm_kwargs["enable_lora"] = True
+        llm_kwargs["max_lora_rank"] = 64
     llm = LLM(
         model=args.model,
         revision=args.revision,
@@ -246,6 +262,11 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
         enable_prefix_caching=True,
         **llm_kwargs,
     )
+    lora_request = None
+    if use_lora:
+        from vllm.lora.request import LoRARequest
+
+        lora_request = LoRARequest("macro_adapter", 1, str(Path(args.lora_adapter).resolve()))
     tokenizer = llm.get_tokenizer()
 
     few_shot = None
@@ -266,9 +287,11 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
     ]
 
     t0 = time.perf_counter()
-    outputs = llm.generate(
-        [{"prompt_token_ids": ids} for ids in prompts["prompt_token_ids"]], params, use_tqdm=True
-    )
+    prompts_payload = [{"prompt_token_ids": ids} for ids in prompts["prompt_token_ids"]]
+    gen_kw: dict[str, Any] = {}
+    if lora_request is not None:
+        gen_kw["lora_request"] = lora_request
+    outputs = llm.generate(prompts_payload, params, use_tqdm=True, **gen_kw)
     elapsed = time.perf_counter() - t0
 
     raw = [o.outputs[0].text for o in outputs]
@@ -285,7 +308,10 @@ def _run_slm_evaluation(argv: list[str] | None = None) -> None:
             "split_hash": manifest.get("splits_hash"),
             "prompt_version": prompt_version,
             "fold": fold_id if strategy == "kfold" else None,
-            "comparable_group": manifest.get("splits_hash"),
+            "comparable_group": manifest.get("comparable_group")
+            or manifest.get("parent_splits_hash")
+            or manifest.get("splits_hash"),
+            "lora_adapter": args.lora_adapter,
         }
 
     run_info = {

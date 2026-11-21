@@ -14,6 +14,8 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from ..domain.labels import MICRO_PER_MACRO
+
 _VAR = re.compile(r"\$\{([^}]+)\}")
 
 
@@ -124,12 +126,18 @@ class DatasetConfig:
 
 
 @dataclass
+class ScopeConfig:
+    macro_category: str | None = None
+
+
+@dataclass
 class SplitConfig:
     strategy: str = "holdout"
     seed: int = 42
     test_frac: float = 0.07
     val_frac: float = 0.05
     k: int = 5
+    assignment_from: str | None = None
 
 
 @dataclass
@@ -164,6 +172,26 @@ class RunsConfig:
 
 
 @dataclass
+class UnslothTrainingConfig:
+    lora_r: int = 16
+    lora_alpha: int = 32
+    epochs: int = 3
+    batch_size: int = 4
+    grad_accum: int = 4
+    learning_rate: float = 2.0e-4
+    max_seq_len: int | None = None
+    early_stopping_patience: int = 2
+
+
+@dataclass
+class TrainingConfig:
+    enabled: bool = False
+    base_model: str = ""
+    output_subdir: str = "adapters"
+    unsloth: UnslothTrainingConfig = field(default_factory=UnslothTrainingConfig)
+
+
+@dataclass
 class SyncConfig:
     s3_prefix: str = ""
 
@@ -185,18 +213,36 @@ class ExperimentConfig:
     sequence: SequenceConfig
     runs: RunsConfig
     sync: SyncConfig
+    scope: ScopeConfig = field(default_factory=ScopeConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ExperimentConfig:
+        scope_raw = d.get("scope") or {}
+        macro = scope_raw.get("macro_category")
+        if macro is not None and macro not in MICRO_PER_MACRO:
+            raise ValueError(f"scope.macro_category sconosciuta: {macro!r}")
+        split_raw = dict(d.get("split") or {})
+        training_raw = d.get("training") or {}
+        unsloth_raw = training_raw.get("unsloth") or {}
         return cls(
             experiment_id=d["experiment_id"],
             paths=PathsConfig(**d.get("paths", {})),
             dataset=DatasetConfig(**d.get("dataset", {})),
-            split=SplitConfig(**d.get("split", {})),
+            split=SplitConfig(**split_raw),
             prompt=PromptConfig(**d.get("prompt", {})),
             sequence=SequenceConfig(**d.get("sequence", {})),
             runs=RunsConfig(**d.get("runs", {})),
             sync=SyncConfig(**d.get("sync", {})),
+            scope=ScopeConfig(macro_category=macro),
+            training=TrainingConfig(
+                enabled=bool(training_raw.get("enabled", False)),
+                base_model=str(training_raw.get("base_model", "")),
+                output_subdir=str(training_raw.get("output_subdir", "adapters")),
+                unsloth=UnslothTrainingConfig(
+                    **{k: unsloth_raw[k] for k in UnslothTrainingConfig.__dataclass_fields__ if k in unsloth_raw}
+                ),
+            ),
         )
 
 
@@ -230,6 +276,12 @@ def experiment_output_dir(cfg: ExperimentConfig) -> Path:
     return (root / "experiments" / cfg.experiment_id).resolve()
 
 
+def experiment_output_dir_for_id(cfg: ExperimentConfig, experiment_id: str) -> Path:
+    """Directory ``outputs/experiments/<experiment_id>`` nello stesso output root."""
+    root = Path(cfg.paths.output_root)
+    return (root / "experiments" / experiment_id).resolve()
+
+
 def resolved_dataset_path(cfg: ExperimentConfig) -> Path:
     p = cfg.dataset.path
     path = Path(p)
@@ -248,6 +300,7 @@ def build_manifest(
     splits_hash_value: str | None,
     prompt_hash: str | None,
     prompt_version: str,
+    parent_splits_hash: str | None = None,
 ) -> dict[str, Any]:
     root = Path(cfg.paths.root)
     try:
@@ -262,12 +315,17 @@ def build_manifest(
         pd_v = pd.__version__
     except Exception:
         pd_v = None
+    comparable = parent_splits_hash or splits_hash_value
     return {
         "experiment_id": cfg.experiment_id,
         "config_hash": config_hash,
         "dataset_path": str(dataset_path),
         "dataset_sha256": dataset_hash,
         "splits_hash": splits_hash_value,
+        "scope_macro": cfg.scope.macro_category,
+        "split_assignment_from": cfg.split.assignment_from,
+        "parent_splits_hash": parent_splits_hash,
+        "comparable_group": comparable,
         "prompt_version": prompt_version,
         "prompt_sha256": prompt_hash,
         "git_commit": git_commit(root),

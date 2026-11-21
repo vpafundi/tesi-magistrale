@@ -7,14 +7,20 @@ import pandas as pd
 from ...artifacts.io import load_json, write_json, write_yaml
 from ...config.experiment import (
     build_manifest,
+    experiment_output_dir_for_id,
     file_sha256,
     resolved_dataset_path,
     splits_hash,
 )
-from ...data.core import filter_perimeter, load_segments, prepare_text, sample_dataset
+from ...data.core import inherit_split_assignments, load_segments_cured
 from ...data.splits_strategy import split_strategy_for
 from ...pipeline.context import ExperimentContext, PrepareStats
-from ...pipeline.exceptions import DatasetNotFoundError, ImmutableExperimentError
+from ...pipeline.exceptions import (
+    DatasetNotFoundError,
+    EmptyScopeMacroError,
+    ImmutableExperimentError,
+    MasterSplitsNotFoundError,
+)
 from ...prompt.core import prompt_footprint
 from ...sequence.core import compute_max_seq_len_for_experiment
 
@@ -75,20 +81,21 @@ class LoadAndCureDatasetStage:
         if not ds_path.is_file():
             ctx.logger.error("load_dataset: not found path=%s", ds_path)
             raise DatasetNotFoundError(f"Dataset non trovato: {ds_path}")
-        segments, _ = filter_perimeter(load_segments(ds_path))
-        samp = ctx.cfg.dataset.sample
-        segments = sample_dataset(
-            segments, samp.get("n"), samp.get("frac"), seed=int(samp.get("seed", 42))
-        )
-        segments, dropped = prepare_text(segments, ctx.cfg.dataset.text_column)
+        try:
+            segments, dropped, _ = load_segments_cured(ctx.cfg)
+        except ValueError as e:
+            if ctx.cfg.scope.macro_category:
+                raise EmptyScopeMacroError(str(e)) from e
+            raise
         ctx.segments = segments
         ctx.prepare_stats.n_empty_text_dropped = len(dropped)
         ctx.prepare_stats.dataset_path = ds_path
         ctx.logger.info(
-            "load_dataset: segments=%s dropped_empty=%s path=%s",
+            "load_dataset: segments=%s dropped_empty=%s path=%s scope=%s",
             len(segments),
             len(dropped),
             ds_path,
+            ctx.cfg.scope.macro_category,
         )
 
 
@@ -113,8 +120,20 @@ class AssignSplitStage:
             UnknownSplitStrategyError: Strategia non supportata.
         """
         assert ctx.segments is not None
-        strategy = split_strategy_for(ctx.cfg)
-        split_tbl = strategy.assign(ctx.segments, ctx.cfg.split)
+        master_id = ctx.cfg.split.assignment_from
+        if master_id:
+            parent_dir = experiment_output_dir_for_id(ctx.cfg, master_id)
+            parent_splits_path = parent_dir / "splits.parquet"
+            if not parent_splits_path.is_file():
+                raise MasterSplitsNotFoundError(
+                    f"Manca {parent_splits_path} — esegui prepare su {master_id!r} prima."
+                )
+            parent_splits = pd.read_parquet(parent_splits_path)
+            ctx.parent_splits_hash = splits_hash(parent_splits)
+            split_tbl = inherit_split_assignments(ctx.segments, parent_splits)
+        else:
+            strategy = split_strategy_for(ctx.cfg)
+            split_tbl = strategy.assign(ctx.segments, ctx.cfg.split)
         ctx.split_table = split_tbl
         ctx.prepare_stats.n_segments = len(ctx.segments)
         ctx.prepare_stats.n_splits_rows = len(split_tbl)
@@ -146,6 +165,11 @@ class ComputeSequenceBudgetStage:
         merged_df = ctx.segments.merge(ctx.split_table, on=on, how="inner", validate="1:1")
         prompt_version = ctx.cfg.prompt.version
         seq = ctx.cfg.sequence
+        macros = (
+            [ctx.cfg.scope.macro_category]
+            if ctx.cfg.scope.macro_category
+            else sorted(merged_df["macro_category"].unique().tolist())
+        )
         max_len, dbg = compute_max_seq_len_for_experiment(
             mode=seq.max_seq_len_mode,
             base_max_seq_len=seq.max_seq_len,
@@ -155,6 +179,7 @@ class ComputeSequenceBudgetStage:
             multiple=seq.multiple,
             prompt_version=prompt_version,
             token_sample_rows=seq.token_sample_rows,
+            macros=macros,
         )
         ds_path = resolved_dataset_path(ctx.cfg)
         ctx.run_config = {
@@ -169,6 +194,7 @@ class ComputeSequenceBudgetStage:
             "gpu_mem": ctx.cfg.runs.gpu_mem,
             "text_column": ctx.cfg.dataset.text_column,
             "dataset_path": str(ds_path),
+            "scope_macro": ctx.cfg.scope.macro_category,
         }
         ctx.prepare_stats.max_seq_len = max_len
         ctx.logger.info("sequence_budget: max_seq_len=%s mode=%s", max_len, seq.max_seq_len_mode)
@@ -203,6 +229,7 @@ class PersistPrepareArtifactsStage:
             splits_hash_value=sh,
             prompt_hash=prompt_footprint(ctx.cfg.prompt.version),
             prompt_version=ctx.cfg.prompt.version,
+            parent_splits_hash=ctx.parent_splits_hash,
         )
         ctx.manifest = manifest
         paths = ctx.paths

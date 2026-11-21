@@ -13,6 +13,7 @@ from .factory import build_context
 from .stages.classic import ClassicEvaluatePipeline
 from .stages.compare_sync import ComparePipeline, SyncPipeline
 from .stages.prepare import PreparePipeline, print_prepare_summary
+from .stages.train import run_train_stage
 
 
 class BaselineExperimentOrchestrator:
@@ -43,6 +44,13 @@ class BaselineExperimentOrchestrator:
         self._classic.run(ctx)
         self.logger.info("classic: done experiment_id=%s", ctx.cfg.experiment_id)
 
+    def train(self, config_path: Path, *, rerun: bool = False, dry_run: bool = False) -> None:
+        """Export JSONL e subprocess Unsloth quando ``training.enabled``."""
+        self.logger.info("train: start config=%s rerun=%s dry_run=%s", config_path, rerun, dry_run)
+        ctx = build_context(config_path, rerun=rerun, dry_run_slm=dry_run, logger=self.logger)
+        run_train_stage(ctx)
+        self.logger.info("train: done experiment_id=%s", ctx.cfg.experiment_id)
+
     def evaluate_slm(self, config_path: Path, *, rerun: bool = False, dry_run: bool = False) -> None:
         """Avvia un subprocess vLLM per ogni (modello, modalità, fold)."""
         self.logger.info("slm: start config=%s rerun=%s dry_run=%s", config_path, rerun, dry_run)
@@ -57,6 +65,24 @@ class BaselineExperimentOrchestrator:
         self.evaluate_classic(config_path, rerun=rerun)
         self.evaluate_slm(config_path, rerun=rerun)
         self.logger.info("run_all: complete")
+
+    def compare_family(
+        self,
+        slug: str,
+        *,
+        family_prefix: str = "holdout_s42",
+        output_root: Path | None = None,
+    ) -> Path:
+        """Unisce predizioni dei 4 esperimenti macro e scrive metriche globali."""
+        from ..artifacts.merge import write_family_merge
+        from ..config.experiment import repo_root
+        import os
+
+        root = output_root or Path(os.environ.get("TESI_OUTPUT_DIR", str(repo_root() / "outputs"))).resolve()
+        self.logger.info("compare_family: slug=%s prefix=%s", slug, family_prefix)
+        out = write_family_merge(root, slug=slug, family_prefix=family_prefix)
+        self.logger.info("compare_family: wrote %s", out)
+        return out
 
     def compare(self, output_root: Path | None = None) -> Path:
         """Aggrega tutte le run in ``comparison/summary.csv``."""

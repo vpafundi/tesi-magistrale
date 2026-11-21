@@ -1,0 +1,12 @@
+experiment_id: holdout_s42__documento_di_spesa
+extends: holdout_s42_minimal.yaml
+
+scope:
+  macro_category: documento_di_spesa
+
+split:
+  assignment_from: holdout_s42_minimal
+
+training:
+  enabled: true
+  base_model: google/gemma-3-4b-it

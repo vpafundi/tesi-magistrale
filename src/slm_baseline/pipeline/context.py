@@ -73,6 +73,7 @@ class ExperimentContext:
     run_config: dict[str, Any] = field(default_factory=dict)
     manifest: dict[str, Any] = field(default_factory=dict)
     prepare_stats: PrepareStats = field(default_factory=PrepareStats)
+    parent_splits_hash: str | None = None
     logger: logging.Logger = field(default_factory=get_pipeline_logger)
 
 

@@ -36,6 +36,10 @@ def cmd_classic(ns: argparse.Namespace) -> None:
     _orchestrator(ns).evaluate_classic(Path(ns.config), rerun=ns.rerun)
 
 
+def cmd_train(ns: argparse.Namespace) -> None:
+    _orchestrator(ns).train(Path(ns.config), rerun=ns.rerun, dry_run=ns.dry_run)
+
+
 def cmd_slm(ns: argparse.Namespace) -> None:
     _orchestrator(ns).evaluate_slm(Path(ns.config), rerun=ns.rerun, dry_run=ns.dry_run)
 
@@ -46,6 +50,14 @@ def cmd_run(ns: argparse.Namespace) -> None:
 
 def cmd_compare(ns: argparse.Namespace) -> None:
     _orchestrator(ns).compare(_output_root_from_args(ns))
+
+
+def cmd_compare_family(ns: argparse.Namespace) -> None:
+    _orchestrator(ns).compare_family(
+        ns.slug,
+        family_prefix=ns.family_prefix,
+        output_root=_output_root_from_args(ns),
+    )
 
 
 def cmd_sync(ns: argparse.Namespace) -> None:
@@ -68,6 +80,12 @@ def main(argv: list[str] | None = None) -> None:
     p_prep.add_argument("--force", action="store_true")
     p_prep.set_defaults(func=cmd_prepare)
 
+    p_tr = sub.add_parser("train", help="Fine-tuning LoRA (Unsloth) per esperimento macro-scoped")
+    p_tr.add_argument("--config", required=True)
+    p_tr.add_argument("--rerun", action="store_true")
+    p_tr.add_argument("--dry-run", action="store_true")
+    p_tr.set_defaults(func=cmd_train)
+
     p_cl = sub.add_parser("classic", help="Esegue baseline classiche nella cartella esperimento")
     p_cl.add_argument("--config", required=True)
     p_cl.add_argument("--rerun", action="store_true")
@@ -87,6 +105,11 @@ def main(argv: list[str] | None = None) -> None:
 
     p_cmp = sub.add_parser("compare", help="Aggrega metriche da tutti gli esperimenti")
     p_cmp.set_defaults(func=cmd_compare)
+
+    p_cf = sub.add_parser("compare-family", help="Unisce predizioni 4 macro e metriche globali")
+    p_cf.add_argument("--slug", required=True, help="Slug run (es. gemma-3-4b-it__constrained__L15360)")
+    p_cf.add_argument("--family-prefix", default="holdout_s42")
+    p_cf.set_defaults(func=cmd_compare_family)
 
     p_syn = sub.add_parser("sync", help="Copia cartella esperimento su S3 (s3fs)")
     p_syn.add_argument("--config", default=None)

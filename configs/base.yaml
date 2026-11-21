@@ -9,6 +9,9 @@ paths:
   output_root: ${TESI_OUTPUT_DIR}
   data_root: ${TESI_DATA_DIR}
 
+scope:
+  macro_category: null   # denuncia | documentazione_medica | documento_di_spesa | documento_di_spesa_medica
+
 dataset:
   path: data/df_sample_all.parquet
   text_column: ocr_surrogates
@@ -23,6 +26,21 @@ split:
   test_frac: 0.07
   val_frac: 0.05
   k: 5               # kfold only
+  assignment_from: null   # experiment_id master (es. holdout_s42_minimal)
+
+training:
+  enabled: false
+  base_model: ""
+  output_subdir: adapters
+  unsloth:
+    lora_r: 16
+    lora_alpha: 32
+    epochs: 3
+    batch_size: 4
+    grad_accum: 4
+    learning_rate: 2.0e-4
+    max_seq_len: null
+    early_stopping_patience: 2
 
 prompt:
   version: minimal   # minimal | enriched_v1

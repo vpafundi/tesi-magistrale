@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedShuffleSplit
 
+from ..config.experiment import ExperimentConfig, ScopeConfig, resolved_dataset_path
 from ..domain.labels import is_in_perimeter
 
 REQUIRED_COLUMNS = [
@@ -33,9 +34,16 @@ def normalize_text(raw: object) -> str:
     return re.sub(r"\n{3,}", "\n\n", s).strip()
 
 
-def load_segments(path: str | Path) -> pd.DataFrame:
+def load_segments(path: str | Path, *, macro_category: str | None = None) -> pd.DataFrame:
     """Read parquet (local path or s3:// with s3fs) and check schema."""
-    df = pd.read_parquet(path)
+    path = Path(path)
+    filters = [("macro_category", "==", macro_category)] if macro_category is not None else None
+    try:
+        df = pd.read_parquet(path, filters=filters)
+    except Exception:
+        df = pd.read_parquet(path)
+        if macro_category is not None:
+            df = df[df["macro_category"] == macro_category].copy()
     missing = set(REQUIRED_COLUMNS) - set(df.columns)
     if missing:
         raise ValueError(f"colonne mancanti nel parquet: {sorted(missing)}")
@@ -44,6 +52,44 @@ def load_segments(path: str | Path) -> pd.DataFrame:
     for col in ("macro_category", "sub_category"):
         df[col] = df[col].astype(str).str.strip()
     return df
+
+
+def apply_scope_filter(df: pd.DataFrame, scope: ScopeConfig) -> pd.DataFrame:
+    """Keep rows for ``scope.macro_category`` when set."""
+    if not scope.macro_category:
+        return df
+    out = df[df["macro_category"] == scope.macro_category].copy()
+    if len(out) == 0:
+        raise ValueError(f"nessun segmento per scope.macro_category={scope.macro_category!r}")
+    return out
+
+
+def load_segments_cured(cfg: ExperimentConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Load parquet, perimeter, scope, sample, text — same order as prepare/classic."""
+    ds_path = resolved_dataset_path(cfg)
+    macro = cfg.scope.macro_category
+    raw = load_segments(ds_path, macro_category=macro)
+    in_perimeter, out_perimeter = filter_perimeter(raw)
+    scoped = apply_scope_filter(in_perimeter, cfg.scope)
+    samp = cfg.dataset.sample
+    sampled = sample_dataset(
+        scoped, samp.get("n"), samp.get("frac"), seed=int(samp.get("seed", 42))
+    )
+    usable, dropped = prepare_text(sampled, cfg.dataset.text_column)
+    return usable, dropped, out_perimeter
+
+
+def inherit_split_assignments(segments: pd.DataFrame, parent_splits: pd.DataFrame) -> pd.DataFrame:
+    """Join master split table with scoped segments on ``record_key``."""
+    assign_cols = ["record_key"] + [c for c in ("split", "fold") if c in parent_splits.columns]
+    parent = parent_splits[assign_cols].drop_duplicates("record_key")
+    base_cols = ["record_key", "document_id", "macro_category", "sub_category"]
+    seg = segments[base_cols].copy()
+    merged = seg.merge(parent, on="record_key", how="inner")
+    if len(merged) != len(seg):
+        missing = len(seg) - len(merged)
+        raise ValueError(f"{missing} segmenti senza assegnazione split nel master")
+    return merged
 
 
 def filter_perimeter(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:

@@ -24,7 +24,15 @@ class ClassicMethodRegistry:
             "tfidf_logreg": lambda train, test, seed: predict_tfidf_logreg(train, test, seed=seed),
         }
 
-    def predict(self, method: str, train: pd.DataFrame, test: pd.DataFrame, seed: int) -> pd.Series:
+    def predict(
+        self,
+        method: str,
+        train: pd.DataFrame,
+        test: pd.DataFrame,
+        seed: int,
+        *,
+        macro_scope: str | None = None,
+    ) -> pd.Series:
         """Esegue il predictor registrato.
 
         Args:
@@ -44,4 +52,6 @@ class ClassicMethodRegistry:
             msg = f"Metodo classic sconosciuto: {method!r}"
             logging.getLogger("slm_baseline.pipeline").error("classic registry: %s", msg)
             raise UnknownClassicMethodError(msg)
+        if method == "tfidf_logreg":
+            return predict_tfidf_logreg(train, test, seed, macro_scope=macro_scope)
         return fn(train, test, seed)

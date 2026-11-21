@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from slm_baseline.config.experiment import ExperimentConfig
 from slm_baseline.experiment import canonical_config_hash, load_merged_experiment_dict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +27,19 @@ def test_load_extends_and_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     assert d["a"]["x"] == 1
     assert d["a"]["y"] == "hello"
     assert d["a"]["z"] == 2
+
+
+def test_macro_scoped_yaml_merges(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TESI_REPO_ROOT", str(ROOT))
+    monkeypatch.setenv("TESI_DATA_DIR", str(ROOT / "data"))
+    monkeypatch.setenv("TESI_OUTPUT_DIR", str(ROOT / "outputs"))
+    path = ROOT / "configs/experiments/holdout_s42__denuncia.yaml"
+    if not path.is_file():
+        pytest.skip("macro yaml missing")
+    cfg = ExperimentConfig.from_dict(load_merged_experiment_dict(path))
+    assert cfg.scope.macro_category == "denuncia"
+    assert cfg.split.assignment_from == "holdout_s42_minimal"
+    assert cfg.training.enabled is True
 
 
 def test_canonical_config_hash_stable() -> None:

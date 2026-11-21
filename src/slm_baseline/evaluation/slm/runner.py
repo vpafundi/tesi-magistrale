@@ -13,7 +13,7 @@ from ...pipeline.context import ExperimentContext
 from ...pipeline.exceptions import PrepareArtifactsMissingError, SlmRunnerError
 
 
-def slm_slug(model: str, mode: str, max_seq_len: int, fold_id: int | None) -> str:
+def slm_slug(model: str, mode: str, max_seq_len: int, fold_id: int | None, *, lora: bool = False) -> str:
     """Identificatore file run per una valutazione vLLM.
 
     Args:
@@ -26,9 +26,10 @@ def slm_slug(model: str, mode: str, max_seq_len: int, fold_id: int | None) -> st
         Slug senza prefisso ``metrics__``.
     """
     base = model.split("/")[-1]
+    lora_sfx = "__lora" if lora else ""
     if fold_id is None:
-        return f"{base}__{mode}__L{max_seq_len}"
-    return f"{base}__{mode}__L{max_seq_len}__fold{fold_id}"
+        return f"{base}__{mode}__L{max_seq_len}{lora_sfx}"
+    return f"{base}__{mode}__L{max_seq_len}__fold{fold_id}{lora_sfx}"
 
 
 class SubprocessVllmRunner:
@@ -49,6 +50,7 @@ class SubprocessVllmRunner:
         mode: str,
         fold_id: int | None,
         *,
+        lora_adapter: str | None = None,
         dry_run: bool = False,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -82,6 +84,8 @@ class SubprocessVllmRunner:
         ]
         if fold_id is not None:
             cmd.extend(["--fold", str(fold_id)])
+        if lora_adapter:
+            cmd.extend(["--lora-adapter", lora_adapter])
         if dry_run:
             log.info("slm dry-run: %s", " ".join(cmd))
             return
@@ -111,6 +115,8 @@ class SlmEvaluatePipeline:
         max_seq_len = int(run_cfg["max_seq_len"])
         strategy = ctx.cfg.split.strategy
         exp_dir = ctx.exp_dir
+        manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else {}
+        default_adapter = manifest.get("adapter_path")
         ctx.logger.info(
             "slm: schedule n_models=%s max_seq_len=%s strategy=%s",
             len(ctx.cfg.runs.slm),
@@ -119,8 +125,15 @@ class SlmEvaluatePipeline:
         )
         self.runner.logger = ctx.logger
 
-        def maybe_launch(model: str, mode: str, fold_id: int | None) -> None:
-            slug = slm_slug(model, mode, max_seq_len, fold_id)
+        def maybe_launch(
+            model: str,
+            mode: str,
+            fold_id: int | None,
+            *,
+            lora_adapter: str | None = None,
+        ) -> None:
+            use_lora = bool(lora_adapter)
+            slug = slm_slug(model, mode, max_seq_len, fold_id, lora=use_lora)
             if (ctx.paths.runs / f"metrics__{slug}.json").is_file() and not ctx.rerun:
                 ctx.logger.info("slm: skip %s (metrics exist)", slug)
                 return
@@ -129,15 +142,19 @@ class SlmEvaluatePipeline:
                 model,
                 mode,
                 fold_id,
+                lora_adapter=lora_adapter,
                 dry_run=ctx.dry_run_slm,
                 logger=ctx.logger,
             )
 
         for spec in ctx.cfg.runs.slm:
             model = spec["model"]
+            use_adapter = bool(spec.get("use_adapter", ctx.cfg.training.enabled))
+            adapter = str(spec.get("adapter_path") or default_adapter or "") if use_adapter else ""
+            adapter = adapter if adapter and Path(adapter).is_dir() else None
             for mode in spec["modes"]:
                 if strategy == "kfold":
                     for fold_id in range(ctx.cfg.split.k):
-                        maybe_launch(model, mode, fold_id)
+                        maybe_launch(model, mode, fold_id, lora_adapter=adapter)
                 else:
-                    maybe_launch(model, mode, None)
+                    maybe_launch(model, mode, None, lora_adapter=adapter)
