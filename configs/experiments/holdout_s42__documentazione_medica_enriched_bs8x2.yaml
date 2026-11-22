@@ -1,0 +1,8 @@
+# Stesso enriched (prompt, sampling, split master); batch effettivo 16 con 8×2.
+experiment_id: holdout_s42__documentazione_medica_enriched_bs8x2
+extends: holdout_s42__documentazione_medica_enriched.yaml
+
+training:
+  unsloth:
+    batch_size: 8
+    grad_accum: 2
