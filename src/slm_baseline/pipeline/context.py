@@ -1,4 +1,10 @@
-"""Stato condiviso tra gli stage della pipeline baseline."""
+"""Shared state passed between baseline pipeline stages.
+
+Defines dataclasses that hold experiment configuration, on-disk paths, loaded
+data frames, and run flags. :class:`ExperimentContext` is built by
+:func:`~slm_baseline.pipeline.factory.build_context` and mutated in place as
+prepare and evaluation stages run.
+"""
 
 from __future__ import annotations
 
@@ -16,15 +22,15 @@ from ..logging.core import get_pipeline_logger
 
 @dataclass
 class PrepareStats:
-    """Metriche riassuntive emesse dalla fase prepare.
+    """Summary metrics produced by the prepare stage.
 
     Attributes:
-        n_segments: Segmenti in perimetro dopo filtro e sample.
-        n_splits_rows: Righe nella tabella split (holdout o k-fold).
-        n_empty_text_dropped: Righe scartate per testo OCR vuoto.
-        max_seq_len: Budget token risolto per SLM (da ``run_config``).
-        splits_hash: Hash della tabella split (confrontabilità tra run).
-        dataset_path: Percorso assoluto del parquet usato.
+        n_segments: Segments in scope after filtering and sampling.
+        n_splits_rows: Rows in the split table (holdout or k-fold).
+        n_empty_text_dropped: Rows dropped because OCR text was empty.
+        max_seq_len: Resolved token budget for SLM runs (from ``run_config``).
+        splits_hash: Hash of the split table for cross-run comparability.
+        dataset_path: Absolute path to the segments parquet used.
     """
 
     n_segments: int = 0
@@ -37,26 +43,28 @@ class PrepareStats:
 
 @dataclass
 class ExperimentContext:
-    """Contesto mutabile per un esperimento da un singolo YAML.
+    """Mutable carrier for one experiment loaded from a single YAML.
 
-    Viene creato da :func:`build_context` e arricchito dagli stage prepare/evaluate.
+    Created by :func:`~slm_baseline.pipeline.factory.build_context` and filled
+    by prepare and evaluation stages (segments, manifest, run_config, etc.).
 
     Attributes:
-        config_path: File YAML esperimento (path risolto).
-        merged: Dizionario YAML dopo ``extends`` ed espansione variabili.
-        cfg: Config tipizzata (:class:`~slm_baseline.config.experiment.ExperimentConfig`).
-        exp_dir: Directory radice ``outputs/experiments/<experiment_id>/``.
-        paths: Percorsi standard (manifest, splits, runs, …).
-        config_hash: Hash canonico della config per immutabilità.
-        force: Se True, prepare sovrascrive anche con hash diverso.
-        rerun: Se True, le valutazioni non saltano metriche esistenti.
-        dry_run_slm: Se True, ``slm`` stampa solo i comandi subprocess.
-        segments: DataFrame segmenti curati (dopo prepare, load).
-        split_table: Tabella assegnazione split o fold.
-        run_config: Dict scritto in ``run_config.json`` (max_seq_len, limit, …).
-        manifest: Dict scritto in ``manifest.json``.
-        prepare_stats: Contatori aggiornati durante prepare.
-        logger: Logger condiviso (impostato da orchestrator o ``build_context``).
+        config_path: Resolved path to the experiment YAML.
+        merged: YAML dict after ``extends`` merge and variable expansion.
+        cfg: Typed config (:class:`~slm_baseline.config.experiment.ExperimentConfig`).
+        exp_dir: Root directory ``outputs/experiments/<experiment_id>/``.
+        paths: Standard artifact paths (manifest, splits, runs, …).
+        config_hash: Canonical config hash for immutability checks.
+        force: When ``True``, prepare may overwrite even when the hash differs.
+        rerun: When ``True``, evaluation stages re-run instead of skipping existing metrics.
+        dry_run_slm: When ``True``, the SLM stage only prints subprocess commands.
+        segments: Curated segments dataframe (set after prepare/load).
+        split_table: Holdout or k-fold assignment table.
+        run_config: Payload written to ``run_config.json`` (max_seq_len, limits, …).
+        manifest: Payload written to ``manifest.json``.
+        prepare_stats: Counters updated during prepare.
+        parent_splits_hash: Hash of parent splits for macro-scoped child experiments, if any.
+        logger: Shared logger (set by the orchestrator or ``build_context``).
     """
 
     config_path: Path
@@ -79,13 +87,13 @@ class ExperimentContext:
 
 @dataclass
 class EvalFoldContext:
-    """Frame train/test per un fold k-fold o per holdout.
+    """Train and test frames for one k-fold or a single holdout evaluation.
 
     Attributes:
-        fold_id: Indice fold ``0..k-1``, oppure ``None`` in holdout.
-        df: Segmenti con colonna ``split`` già applicata.
-        train: Righe con ``split == \"train\"``.
-        test: Righe dello split di valutazione (es. ``test``).
+        fold_id: Fold index ``0 .. k-1``, or ``None`` for holdout.
+        df: Segments with the ``split`` column already applied.
+        train: Rows where ``split == \"train\"``.
+        test: Rows in the evaluation split (e.g. ``test``).
     """
 
     fold_id: int | None

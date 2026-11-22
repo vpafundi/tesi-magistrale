@@ -1,4 +1,9 @@
-"""Pipeline prepare: materializza directory esperimento e artefatti."""
+"""Prepare stage: materialize the experiment directory and on-disk artifacts.
+
+Runs a fixed sequence of sub-stages on :class:`~slm_baseline.pipeline.context.ExperimentContext`:
+immutability guard, dataset load/curation, split assignment, sequence budget, and persistence.
+Invoked by :class:`~slm_baseline.pipeline.orchestrator.BaselineExperimentOrchestrator.prepare`.
+"""
 
 from __future__ import annotations
 
@@ -26,26 +31,24 @@ from ...sequence.core import compute_max_seq_len_for_experiment
 
 
 class GuardImmutabilityStage:
-    """Blocca prepare se esiste un manifest con ``config_hash`` diverso."""
+    """Refuse prepare when an existing manifest has a different ``config_hash``."""
 
     @property
     def name(self) -> str:
         return "guard_immutability"
 
     def run(self, ctx: ExperimentContext) -> None:
-        """Confronta hash config con manifest esistente.
+        """Compare the current config hash with any existing manifest.
 
         Args:
-            ctx: Deve avere ``config_hash`` e ``paths.manifest``; rispetta ``ctx.force``.
-
-        Returns:
-            None.
+            ctx: Must have ``config_hash`` and ``paths.manifest``; honors ``ctx.force``.
 
         Raises:
-            ImmutableExperimentError: Hash diverso e ``force`` False.
+            ImmutableExperimentError: Hashes differ and ``force`` is ``False``.
         """
         mpath = ctx.paths.manifest
         if not mpath.is_file() or ctx.force:
+            ctx.logger.info("guard_immutability: manifest not found or force is True")
             return
         prev = load_json(mpath).get("config_hash")
         if prev and prev != ctx.config_hash:
@@ -55,27 +58,28 @@ class GuardImmutabilityStage:
                 ctx.config_hash,
             )
             raise ImmutableExperimentError(prev, ctx.config_hash)
-
+        ctx.logger.info("guard_immutability: manifest found and force is False")
 
 class LoadAndCureDatasetStage:
-    """Carica parquet, filtra perimetro, campiona e normalizza il testo OCR."""
+    """Load the parquet, apply scope filters, sample, and normalize OCR text."""
 
     @property
     def name(self) -> str:
         return "load_and_cure_dataset"
 
     def run(self, ctx: ExperimentContext) -> None:
-        """Popola ``ctx.segments`` e contatori in ``ctx.prepare_stats``.
+        """Populate ``ctx.segments`` and counters on ``ctx.prepare_stats``.
 
         Args:
-            ctx: Usa ``ctx.cfg.dataset`` e path risolto del parquet.
+            ctx: Uses ``ctx.cfg.dataset`` and the resolved parquet path.
 
-        Returns:
-            None. Imposta ``ctx.segments``, ``prepare_stats.dataset_path``,
-            ``prepare_stats.n_empty_text_dropped``.
+        Side effects:
+            Sets ``ctx.segments``, ``prepare_stats.dataset_path``,
+            and ``prepare_stats.n_empty_text_dropped``.
 
         Raises:
-            DatasetNotFoundError: File parquet assente.
+            DatasetNotFoundError: Parquet file is missing.
+            EmptyScopeMacroError: Macro scope filter yields no rows.
         """
         ds_path = resolved_dataset_path(ctx.cfg)
         if not ds_path.is_file():
@@ -100,40 +104,48 @@ class LoadAndCureDatasetStage:
 
 
 class AssignSplitStage:
-    """Costruisce tabella holdout o k-fold tramite strategia da YAML."""
+    """Build a holdout or k-fold split table from YAML strategy or parent experiment."""
 
     @property
     def name(self) -> str:
         return "assign_split"
 
     def run(self, ctx: ExperimentContext) -> None:
-        """Scrive assegnazioni in ``ctx.split_table``.
+        """Write split assignments to ``ctx.split_table``.
 
         Args:
-            ctx: Richiede ``ctx.segments`` già popolato.
+            ctx: Requires ``ctx.segments`` to be loaded.
 
-        Returns:
-            None. Aggiorna ``ctx.split_table``, ``prepare_stats.n_segments``,
-            ``prepare_stats.n_splits_rows``.
+        Side effects:
+            Updates ``ctx.split_table``, ``prepare_stats.n_segments``,
+            ``prepare_stats.n_splits_rows``, and optionally ``parent_splits_hash``.
 
         Raises:
-            UnknownSplitStrategyError: Strategia non supportata.
+            MasterSplitsNotFoundError: Child experiment references a parent without ``splits.parquet``.
+            UnknownSplitStrategyError: Propagated when ``split.strategy`` is unsupported.
         """
         assert ctx.segments is not None
         master_id = ctx.cfg.split.assignment_from
         if master_id:
+            ctx.logger.info("assign_split: master_id=%s", master_id)
             parent_dir = experiment_output_dir_for_id(ctx.cfg, master_id)
+            ctx.logger.info("assign_split: parent_dir=%s", parent_dir)
             parent_splits_path = parent_dir / "splits.parquet"
             if not parent_splits_path.is_file():
+                ctx.logger.error("assign_split: parent_splits_path not found=%s", parent_splits_path)
                 raise MasterSplitsNotFoundError(
                     f"Manca {parent_splits_path} — esegui prepare su {master_id!r} prima."
                 )
             parent_splits = pd.read_parquet(parent_splits_path)
             ctx.parent_splits_hash = splits_hash(parent_splits)
             split_tbl = inherit_split_assignments(ctx.segments, parent_splits)
+            ctx.logger.info("assign_split: split_tbl=%s", split_tbl)
         else:
+            ctx.logger.info("assign_split: no master_id, using strategy")
             strategy = split_strategy_for(ctx.cfg)
+            ctx.logger.info("assign_split: strategy=%s", strategy)
             split_tbl = strategy.assign(ctx.segments, ctx.cfg.split)
+            ctx.logger.info("assign_split: split_tbl=%s", split_tbl)
         ctx.split_table = split_tbl
         ctx.prepare_stats.n_segments = len(ctx.segments)
         ctx.prepare_stats.n_splits_rows = len(split_tbl)
@@ -145,31 +157,37 @@ class AssignSplitStage:
 
 
 class ComputeSequenceBudgetStage:
-    """Risolve ``max_seq_len`` e costruisce il dict ``run_config``."""
+    """Resolve ``max_seq_len`` and build the shared ``run_config`` dict."""
 
     @property
     def name(self) -> str:
         return "compute_sequence_budget"
 
     def run(self, ctx: ExperimentContext) -> None:
-        """Calcola budget token e parametri condivisi per classic/SLM.
+        """Compute token budget and run parameters for classic and SLM stages.
 
         Args:
-            ctx: Richiede ``segments`` e ``split_table``.
+            ctx: Requires ``segments`` and ``split_table``.
 
-        Returns:
-            None. Imposta ``ctx.run_config`` e ``prepare_stats.max_seq_len``.
+        Side effects:
+            Sets ``ctx.run_config`` and ``prepare_stats.max_seq_len``.
         """
         assert ctx.segments is not None and ctx.split_table is not None
+        ctx.logger.info("compute_sequence_budget: start")
+        # merge the segments and the split table on the 'on' columns
         on = ["record_key", "document_id", "macro_category", "sub_category"]
+        ctx.logger.info("compute_sequence_budget: on=%s", on)
         merged_df = ctx.segments.merge(ctx.split_table, on=on, how="inner", validate="1:1")
         prompt_version = ctx.cfg.prompt.version
+        ctx.logger.info("compute_sequence_budget: prompt_version=%s", prompt_version)
         seq = ctx.cfg.sequence
+        ctx.logger.info("compute_sequence_budget: seq=%s", seq)
         macros = (
             [ctx.cfg.scope.macro_category]
             if ctx.cfg.scope.macro_category
             else sorted(merged_df["macro_category"].unique().tolist())
         )
+        ctx.logger.info("compute_sequence_budget: macros=%s", macros)
         max_len, dbg = compute_max_seq_len_for_experiment(
             mode=seq.max_seq_len_mode,
             base_max_seq_len=seq.max_seq_len,
@@ -181,6 +199,7 @@ class ComputeSequenceBudgetStage:
             token_sample_rows=seq.token_sample_rows,
             macros=macros,
         )
+        ctx.logger.info("compute_sequence_budget: max_len=%s dbg=%s", max_len, dbg)
         ds_path = resolved_dataset_path(ctx.cfg)
         ctx.run_config = {
             "max_seq_len": max_len,
@@ -196,25 +215,26 @@ class ComputeSequenceBudgetStage:
             "dataset_path": str(ds_path),
             "scope_macro": ctx.cfg.scope.macro_category,
         }
+
         ctx.prepare_stats.max_seq_len = max_len
         ctx.logger.info("sequence_budget: max_seq_len=%s mode=%s", max_len, seq.max_seq_len_mode)
 
 
 class PersistPrepareArtifactsStage:
-    """Persiste YAML, parquet split, manifest e run_config su disco."""
+    """Write resolved YAML, split parquet, manifest, and run_config to disk."""
 
     @property
     def name(self) -> str:
         return "persist_prepare_artifacts"
 
     def run(self, ctx: ExperimentContext) -> None:
-        """Scrive tutti gli artefatti sotto ``ctx.paths.dir``.
+        """Persist all prepare artifacts under ``ctx.paths.dir``.
 
         Args:
-            ctx: Richiede ``split_table``, ``run_config`` e campi cfg già validi.
+            ctx: Requires ``split_table``, ``run_config``, and valid config fields.
 
-        Returns:
-            None. Crea directory, aggiorna ``ctx.manifest`` e ``prepare_stats.splits_hash``.
+        Side effects:
+            Creates the experiment directory, sets ``ctx.manifest`` and ``prepare_stats.splits_hash``.
         """
         assert ctx.split_table is not None
         ds_path = resolved_dataset_path(ctx.cfg)
@@ -246,10 +266,10 @@ class PersistPrepareArtifactsStage:
 
 
 class PreparePipeline:
-    """Esegue in ordine gli stage 3–7 del piano prepare (dopo load context)."""
+    """Run prepare sub-stages in order from immutability guard through persistence."""
 
     def __init__(self) -> None:
-        """Costruisce la lista fissa di stage (immutabilità → persist)."""
+        """Build the fixed list of prepare sub-stages."""
         self.stages = [
             GuardImmutabilityStage(),
             LoadAndCureDatasetStage(),
@@ -259,13 +279,13 @@ class PreparePipeline:
         ]
 
     def run(self, ctx: ExperimentContext) -> PrepareStats:
-        """Esegue tutti gli stage prepare in sequenza.
+        """Execute every prepare sub-stage in sequence.
 
         Args:
-            ctx: Contesto da :func:`~slm_baseline.pipeline.factory.build_context`.
+            ctx: Context from :func:`~slm_baseline.pipeline.factory.build_context`.
 
         Returns:
-            ``ctx.prepare_stats`` dopo l'ultimo stage.
+            ``ctx.prepare_stats`` after the last sub-stage completes.
         """
         for stage in self.stages:
             ctx.logger.info("prepare stage: %s", stage.name)
@@ -274,13 +294,10 @@ class PreparePipeline:
 
 
 def print_prepare_summary(ctx: ExperimentContext) -> None:
-    """Stampa su stdout il riepilogo (comportamento legacy CLI).
+    """Log a human-readable prepare summary (legacy CLI behavior).
 
     Args:
-        ctx: Dopo :meth:`PreparePipeline.run`.
-
-    Returns:
-        None.
+        ctx: Context after :meth:`PreparePipeline.run`.
     """
     stats = ctx.prepare_stats
     seq_mode = ctx.cfg.sequence.max_seq_len_mode
