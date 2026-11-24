@@ -212,3 +212,6 @@ outputs/
 *.parquet
 .DS_Store
 Untitled.ipynb
+
+# Nested standalone EDA project (own git repo, see EDA/README.md)
+/EDA/

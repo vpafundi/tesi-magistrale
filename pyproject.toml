@@ -34,12 +34,6 @@ train = [
     "trl>=0.15",
     "unsloth>=2025.3; platform_system != 'Darwin'",
 ]
-eda = [
-    "sentence-transformers>=3.0",
-    "cleanlab>=2.5",
-    "umap-learn>=0.5",
-    "tqdm>=4.66",
-]
 dev = [
     "pytest>=8.0",
 ]
@@ -57,4 +51,7 @@ build-backend = "hatchling.build"
 packages = ["src/slm_baseline"]
 
 [tool.uv]
-default-groups = ["preprocess", "eval", "eda"]
+default-groups = ["preprocess", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

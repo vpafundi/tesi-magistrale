@@ -14,7 +14,7 @@ Classificazione di segmenti di documenti assicurativi con Small Language Models 
 |---|---|
 | Codice condiviso (prompt, split, metriche) | Fatto, testato in locale |
 | Notebook split e `max_seq_length` (`00`) | Fatto, **da rigenerare** sul dataset completo |
-| EDA dataset completo (`notebooks/EDA/00b`) | Notebook pronto, esecuzione end-to-end da fare |
+| EDA dataset completo | Spostata nel progetto standalone `EDA/` (repo separata, vedi sotto) |
 | Notebook baseline (`01`) | Fatto, da eseguire su SageMaker con vLLM |
 | Baseline encoder | Da fare |
 | Fine-tuning e valutazione | Da fare |
@@ -34,13 +34,13 @@ Classificazione di segmenti di documenti assicurativi con Small Language Models 
 | `src/slm_baseline/run_baseline.py` | Un modello × una modalità con vLLM (`--experiment-dir` legge split e config dall’esperimento) |
 | `src/slm_baseline/cli.py` | Pipeline da YAML: `prepare`, `classic`, `slm`, `run`, `compare`, `sync` |
 | `configs/` | `base.yaml` + esperimenti in `configs/experiments/*.yaml` |
-| `notebooks/EDA/eda_strategy.md` | Strategia EDA |
-| `notebooks/EDA/00b_EDA_aic_data.ipynb` | EDA sul parquet completo (locale) |
 | `notebooks/00_prepare_data_and_splits.ipynb` | Split fisso e scelta di `max_seq_length` |
 | `notebooks/01_baseline.ipynb` | Baseline classiche + SLM zero-shot, tabella, grafici, analisi errori |
 | `notebooks/02_compare_experiments.ipynb` | Tabella di confronto tra esperimenti (`load_experiments`) |
 
 `data/` (parquet, split, `run_config.json`) e `outputs/` non vanno in git: contengono testo OCR, anche se anonimizzato.
+
+**EDA:** l'analisi esplorativa (O1–O7, curation del dataset, run store) vive nel progetto standalone sotto `EDA/` (gitignored qui, destinato a una repo GitHub propria). Vedi `EDA/README.md`.
 
 ## Esperimenti (YAML + CLI)
 
@@ -85,7 +85,7 @@ uv sync
 uv run jupyter lab
 ```
 
-Mettere il campione in `data/sample/df_sample_150.parquet` e il dataset EDA in `data/df_sample_all.parquet`. Gira tutto tranne la sezione vLLM di `01_baseline.ipynb`. Per l'EDA: `uv sync` (gruppo `eda`) e `uv run jupyter lab`.
+Mettere il campione in `data/sample/df_sample_150.parquet` e il dataset completo in `data/df_sample_all.parquet`. Gira tutto tranne la sezione vLLM di `01_baseline.ipynb`. Per l'EDA usare il progetto standalone in `EDA/` (vedi `EDA/README.md`).
 
 ### SageMaker Studio (`ml.g6e.2xlarge`)
 

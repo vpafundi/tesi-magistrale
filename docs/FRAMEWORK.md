@@ -89,7 +89,7 @@ experiment.yaml  →  prepare  →  outputs/experiments/<id>/
 
 ```bash
 cd tesi-magistrale
-uv sync --group dev    # core + pytest; default-groups include preprocess/eval/eda
+uv sync --group dev    # core + pytest; default-groups include preprocess/eval
 ```
 
 - **Senza GPU:** `prepare`, `classic`, test pytest; **no** vLLM.
