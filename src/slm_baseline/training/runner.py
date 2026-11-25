@@ -30,7 +30,12 @@ class SubprocessTrainRunner:
             self.logger.info("train dry-run: %s", " ".join(cmd))
             return
         self.logger.info("train launch: %s", " ".join(cmd))
-        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        env = {
+            **os.environ,
+            "PYTHONUNBUFFERED": "1",
+            # Unsloth: avoid auto padding-free / packed batches (1 train row = 1 segment).
+            "UNSLOTH_DISABLE_AUTO_PADDING_FREE": "1",
+        }
         t0 = time.perf_counter()
         proc = subprocess.run(cmd, check=False, env=env)
         elapsed = time.perf_counter() - t0

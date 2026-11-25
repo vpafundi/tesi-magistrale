@@ -75,6 +75,11 @@ def main(argv: list[str] | None = None) -> None:
     eval_ds = None
     if args.val_jsonl and Path(args.val_jsonl).is_file():
         eval_ds = load_dataset("json", data_files=str(args.val_jsonl), split="train")
+    log.info(
+        "run_unsloth: jsonl rows train=%s val=%s",
+        len(train_ds),
+        len(eval_ds) if eval_ds is not None else 0,
+    )
 
     def _format(example: dict) -> dict:
         text = tokenizer.apply_chat_template(
@@ -87,7 +92,10 @@ def main(argv: list[str] | None = None) -> None:
     train_ds = train_ds.map(_format)
     if eval_ds is not None:
         eval_ds = eval_ds.map(_format)
+    log.info("run_unsloth: after chat template map train=%s val=%s", len(train_ds), len(eval_ds) if eval_ds else 0)
 
+    # Unsloth 2026+ auto-enables padding-free (and may pack) → "Num examples" ≪ jsonl rows.
+    # One SFT row per segment: packing off, padding_free off, block auto packing.
     sft_args = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -102,7 +110,10 @@ def main(argv: list[str] | None = None) -> None:
         greater_is_better=False,
         max_length=args.max_seq_len,
         dataset_text_field="text",
+        packing=False,
+        padding_free=False,
     )
+    setattr(sft_args, "_unsloth_disable_auto_packing", True)
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
@@ -110,6 +121,23 @@ def main(argv: list[str] | None = None) -> None:
         eval_dataset=eval_ds,
         args=sft_args,
     )
+    n_train_eff = len(trainer.train_dataset)
+    log.info(
+        "run_unsloth: SFTTrainer train_dataset len=%s packing=%s max_length=%s",
+        n_train_eff,
+        getattr(trainer.args, "packing", None),
+        getattr(trainer.args, "max_length", None),
+    )
+    if n_train_eff < len(train_ds):
+        log.error(
+            "run_unsloth: train_dataset shorter than jsonl (%s < %s); packing still active?",
+            n_train_eff,
+            len(train_ds),
+        )
+        raise SystemExit(
+            f"SFT train_dataset ha {n_train_eff} righe ma train.jsonl ne ha {len(train_ds)}: "
+            "packing/padding-free non disattivato, training interrotto."
+        )
     log.info("run_unsloth: training ...")
     train_result = trainer.train()
     log.info(
@@ -126,6 +154,9 @@ def main(argv: list[str] | None = None) -> None:
         "train_loss": train_result.training_loss,
         "global_step": train_result.global_step,
         "epochs": args.epochs,
+        "jsonl_rows_train": len(train_ds),
+        "sft_train_examples": n_train_eff,
+        "max_seq_len": args.max_seq_len,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
