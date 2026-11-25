@@ -162,8 +162,26 @@ class SlmRunConfig:
 
 
 @dataclass
+class ClassicMethodSpec:
+    """Voce ``runs.classic``: nome metodo + parametri opzionali (tuning, search_space, …)."""
+
+    method: str
+    params: dict[str, Any] = field(default_factory=dict)
+
+
+def parse_classic_method_entry(entry: str | dict[str, Any]) -> ClassicMethodSpec:
+    if isinstance(entry, str):
+        return ClassicMethodSpec(method=entry, params={})
+    if not isinstance(entry, dict) or "method" not in entry:
+        raise ValueError(f"runs.classic voce non valida: {entry!r}")
+    method = str(entry["method"])
+    params = {k: v for k, v in entry.items() if k != "method"}
+    return ClassicMethodSpec(method=method, params=params)
+
+
+@dataclass
 class RunsConfig:
-    classic: list[str] = field(default_factory=list)
+    classic: list[ClassicMethodSpec] = field(default_factory=list)
     slm: list[dict[str, Any]] = field(default_factory=list)
     eval_split: str = "test"
     limit: int | None = None
@@ -217,6 +235,14 @@ class PathsConfig:
 
 
 @dataclass
+class ExperimentMeta:
+    """Metadati non funzionali (tracciabilità tesi / SageMaker)."""
+
+    description: str = ""
+    sagemaker_instance_type: str = ""
+
+
+@dataclass
 class ExperimentConfig:
     experiment_id: str
     paths: PathsConfig
@@ -228,6 +254,7 @@ class ExperimentConfig:
     sync: SyncConfig
     scope: ScopeConfig = field(default_factory=ScopeConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
+    meta: ExperimentMeta = field(default_factory=ExperimentMeta)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ExperimentConfig:
@@ -239,6 +266,15 @@ class ExperimentConfig:
         training_raw = d.get("training") or {}
         unsloth_raw = training_raw.get("unsloth") or {}
         sampling_raw = training_raw.get("sampling") or {}
+        runs_raw = dict(d.get("runs") or {})
+        classic_raw = runs_raw.get("classic") or []
+        classic_specs = [parse_classic_method_entry(x) for x in classic_raw]
+        runs_kwargs = {k: v for k, v in runs_raw.items() if k != "classic"}
+        meta_raw = dict(d.get("meta") or {})
+        if d.get("description") is not None:
+            meta_raw.setdefault("description", d.get("description"))
+        if d.get("sagemaker_instance_type") is not None:
+            meta_raw.setdefault("sagemaker_instance_type", d.get("sagemaker_instance_type"))
         return cls(
             experiment_id=d["experiment_id"],
             paths=PathsConfig(**d.get("paths", {})),
@@ -246,7 +282,7 @@ class ExperimentConfig:
             split=SplitConfig(**split_raw),
             prompt=PromptConfig(**d.get("prompt", {})),
             sequence=SequenceConfig(**d.get("sequence", {})),
-            runs=RunsConfig(**d.get("runs", {})),
+            runs=RunsConfig(classic=classic_specs, **runs_kwargs),
             sync=SyncConfig(**d.get("sync", {})),
             scope=ScopeConfig(macro_category=macro),
             training=TrainingConfig(
@@ -259,6 +295,10 @@ class ExperimentConfig:
                 sampling=TrainSamplingConfig(
                     **{k: sampling_raw[k] for k in TrainSamplingConfig.__dataclass_fields__ if k in sampling_raw}
                 ),
+            ),
+            meta=ExperimentMeta(
+                description=str(meta_raw.get("description", "")),
+                sagemaker_instance_type=str(meta_raw.get("sagemaker_instance_type", "")),
             ),
         )
 
@@ -335,6 +375,8 @@ def build_manifest(
     comparable = parent_splits_hash or splits_hash_value
     return {
         "experiment_id": cfg.experiment_id,
+        "description": cfg.meta.description,
+        "sagemaker_instance_type": cfg.meta.sagemaker_instance_type,
         "config_hash": config_hash,
         "dataset_path": str(dataset_path),
         "dataset_sha256": dataset_hash,

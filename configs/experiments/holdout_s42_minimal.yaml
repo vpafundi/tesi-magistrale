@@ -1,6 +1,11 @@
 experiment_id: holdout_s42_minimal
 extends: ../base.yaml
 
+meta:
+  description: >
+    Split canonico holdout sul sample legacy; classiche + SLM multi-modello (confronto famiglia s42).
+  sagemaker_instance_type: ml.g5.2xlarge
+
 paths:
   output_root: ${TESI_OUTPUT_DIR}
 

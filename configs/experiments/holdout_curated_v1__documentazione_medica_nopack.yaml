@@ -3,6 +3,11 @@
 experiment_id: holdout_curated_v1__documentazione_medica_nopack
 extends: holdout_curated_v1__documentazione_medica.yaml
 
+meta:
+  description: >
+    Ablation stesso split del minimal; SFT senza packing (1 segmento = 1 esempio).
+  sagemaker_instance_type: ml.g5.2xlarge
+
 training:
   unsloth:
     packing: false

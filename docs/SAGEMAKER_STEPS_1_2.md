@@ -91,6 +91,35 @@ YAML: `holdout_curated_v1.yaml` (master), `holdout_curated_v1__documentazione_me
 
 Non confrontabile con `holdout_s42_*` (`splits_hash` diverso). Tracciabilità EDA: `data/curated/curation_manifest.json`.
 
+### TF-IDF + LogReg con Optuna (CPU, train+val CV)
+
+Esperimento dedicato: `holdout_curated_v1__documentazione_medica_tfidf_tuned.yaml` (stesso split del minimal, solo baseline ottimizzata).
+
+```bash
+tmux new -s tesi_tfidf_tuned
+cd /home/sagemaker-user/tesi-magistrale
+export TESI_REPO_ROOT=$PWD TESI_DATA_DIR=$PWD TESI_OUTPUT_DIR=$PWD/outputs
+FIG=holdout_curated_v1__documentazione_medica_tfidf_tuned
+mkdir -p outputs/logs
+
+uv run python -m slm_baseline.cli prepare --config configs/experiments/${FIG}.yaml
+uv run python -m slm_baseline.cli classic --config configs/experiments/${FIG}.yaml 2>&1 | tee outputs/logs/classic_${FIG}.log
+uv run python -m slm_baseline.cli compare
+```
+
+**Log di avanzamento** (in `classic_*.log`):
+
+```bash
+tail -f outputs/logs/classic_${FIG}.log
+grep -E 'tuning (start|trial|study done|refit)' outputs/logs/classic_${FIG}.log
+```
+
+Righe utili: `tuning trial 12/50 fold 3/5`, `COMPLETE | cv_f1=... | ETA`, `tuning study done`.
+
+**Resume** se interrompi: rilancia lo stesso comando `classic` **senza** `--rerun`. Optuna riprende da `runs/optuna__tfidf_logreg_tuned.log` (journal). Con `--rerun` si cancella lo studio e si riparte da zero.
+
+**Artefatti:** `runs/tuning__tfidf_logreg_tuned.csv/json`, `runs/optuna__tfidf_logreg_tuned.log`, predizioni con colonne `proba__*`. Backup su S3: `uv run python -m slm_baseline.cli sync --config configs/experiments/${FIG}.yaml`.
+
 ## Opzione A — Solo CLI (consigliata)
 
 ```bash

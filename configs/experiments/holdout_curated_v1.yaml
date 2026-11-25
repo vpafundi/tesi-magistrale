@@ -3,6 +3,12 @@
 experiment_id: holdout_curated_v1
 extends: ../base.yaml
 
+meta:
+  description: >
+    Master split sul corpus curated post-EDA (~112k segmenti). Solo prepare;
+    nessuna valutazione né training.
+  sagemaker_instance_type: ml.m6i.xlarge
+
 dataset:
   path: curated/df_segments_curated_v1.parquet
 

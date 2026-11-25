@@ -1,6 +1,10 @@
 experiment_id: holdout_s42__documento_di_spesa_medica
 extends: holdout_s42_minimal.yaml
 
+meta:
+  description: Macro documento_di_spesa_medica su split s42.
+  sagemaker_instance_type: ml.g5.2xlarge
+
 scope:
   macro_category: documento_di_spesa_medica
 

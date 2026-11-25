@@ -1,0 +1,29 @@
+# TF-IDF + LogReg con Optuna (CV su train+val, test intatto). Confrontabile con minimal (stesso split).
+experiment_id: holdout_curated_v1__documentazione_medica_tfidf_tuned
+extends: holdout_curated_v1__documentazione_medica.yaml
+
+meta:
+  description: >
+    Baseline TF-IDF + LogReg con Optuna (CV grouped su train+val, refit, test held-out).
+    Solo CPU; stesso split del minimal curated.
+  sagemaker_instance_type: ml.c6i.4xlarge
+
+runs:
+  classic:
+    - method: tfidf_logreg_tuned
+      tuning:
+        strategy: cv
+        n_splits: 5
+        n_trials: 50
+        seed: 42
+        refit_on: train_val
+        storage: null
+      search_space:
+        features: [char35, char36, word12]
+        C: {low: 0.1, high: 100, log: true}
+        class_weight: [balanced, null]
+  slm: []
+
+training:
+  enabled: false
+  base_model: ""

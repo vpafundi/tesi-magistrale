@@ -104,6 +104,8 @@ def load_experiments(output_root: str | Path) -> tuple[pd.DataFrame, list[dict[s
             comparable = ri.get("comparable_group") or ri.get("split_hash") or manifest.get("splits_hash")
             row: dict[str, Any] = {
                 "experiment_id": ri.get("experiment_id") or manifest.get("experiment_id"),
+                "description": manifest.get("description"),
+                "sagemaker_instance_type": manifest.get("sagemaker_instance_type"),
                 "slug": ri.get("slug"),
                 "model": ri.get("model"),
                 "mode": ri.get("mode"),

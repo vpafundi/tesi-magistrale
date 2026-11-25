@@ -77,10 +77,11 @@ class ClassicEvaluatePipeline:
         limit = ctx.cfg.runs.limit
         seed = ctx.cfg.runs.seed
         strategy = ctx.cfg.split.strategy
+        method_names = [s.method for s in ctx.cfg.runs.classic]
         ctx.logger.info(
             "classic: experiment_id=%s methods=%s strategy=%s",
             ctx.cfg.experiment_id,
-            ctx.cfg.runs.classic,
+            method_names,
             strategy,
         )
 
@@ -94,6 +95,7 @@ class ClassicEvaluatePipeline:
                 df = attach_splits(segments, splits_tbl)
 
             train_df = df[df["split"] == "train"]
+            val_df = df[df["split"] == "val"]
             test_df = df[df["split"] == eval_split].sort_values("record_key").reset_index(drop=True)
             n_test_pool = len(test_df)
             if limit is not None and len(test_df) > limit:
@@ -124,19 +126,41 @@ class ClassicEvaluatePipeline:
             }
             macro_scope = ctx.cfg.scope.macro_category
 
-            for method in ctx.cfg.runs.classic:
+            from ...evaluation.classic.tuning import ClassicEvalData
+
+            eval_data = ClassicEvalData(
+                train_df=train_df,
+                val_df=val_df,
+                test_df=test_df,
+                seed=seed,
+                macro_scope=macro_scope,
+                train_df_for_mask=train_df,
+            )
+
+            for spec in ctx.cfg.runs.classic:
+                method = spec.method
                 slug = classic_slug(method, fold_id)
                 metrics_path = ctx.paths.runs / f"metrics__{slug}.json"
                 if metrics_path.is_file() and not ctx.rerun:
                     ctx.logger.info("classic: skip %s (metrics exist)", slug)
                     continue
-                pred = self.registry.predict(method, train_df, test_df, seed, macro_scope=macro_scope)
+                result = self.registry.run(
+                    spec,
+                    eval_data,
+                    artifacts_dir=ctx.paths.runs,
+                    cache_root=ctx.exp_dir / "cache",
+                    slug=slug,
+                    logger=ctx.logger,
+                    rerun=ctx.rerun,
+                )
                 pred_df = test_df[["record_key", "document_id", "macro_category", "sub_category"]].copy()
-                pred_df["pred"] = pred.values
+                pred_df["pred"] = result.pred.values
                 pred_df["raw_output"] = ""
                 pred_df["prompt_tokens"] = 0
                 pred_df["text_tokens"] = 0
                 pred_df["truncated"] = False
+                if result.proba_df is not None:
+                    pred_df = pred_df.join(result.proba_df, how="left")
                 run_info = {
                     "model": None,
                     "mode": f"classic_{method}",
@@ -144,6 +168,7 @@ class ClassicEvaluatePipeline:
                     "max_seq_len": run_cfg.get("max_seq_len"),
                     "chat_template_kwargs": CHAT_TEMPLATE_KWARGS,
                     **exp_fields,
+                    **result.extra_run_info,
                 }
                 ctx.paths.runs.mkdir(parents=True, exist_ok=True)
                 metrics = save_run(ctx.paths.runs, slug, pred_df, run_info)

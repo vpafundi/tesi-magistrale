@@ -1,6 +1,11 @@
 experiment_id: holdout_s42__documentazione_medica
 extends: holdout_s42_minimal.yaml
 
+meta:
+  description: >
+    Macro doc-med su split s42; LoRA Qwen3-1.7B, classiche e SLM (run Studio GPU).
+  sagemaker_instance_type: ml.g5.2xlarge
+
 scope:
   macro_category: documentazione_medica
 

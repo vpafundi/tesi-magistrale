@@ -4,6 +4,11 @@
 experiment_id: replace_me
 extends: null
 
+# Metadati (opzionali): finiscono in manifest.json dopo prepare
+meta:
+  description: ""
+  sagemaker_instance_type: ""
+
 paths:
   root: ${TESI_REPO_ROOT}
   output_root: ${TESI_OUTPUT_DIR}

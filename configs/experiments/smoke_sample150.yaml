@@ -2,6 +2,10 @@
 experiment_id: smoke_sample150
 extends: ../base.yaml
 
+meta:
+  description: Smoke locale 150 righe; solo classiche, senza SLM.
+  sagemaker_instance_type: local
+
 dataset:
   path: data/sample/df_sample_150.parquet
   sample:

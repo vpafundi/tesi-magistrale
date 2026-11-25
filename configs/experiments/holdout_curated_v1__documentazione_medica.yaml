@@ -2,6 +2,12 @@
 experiment_id: holdout_curated_v1__documentazione_medica
 extends: holdout_curated_v1.yaml
 
+meta:
+  description: >
+    Curated, doc-med scoped, prompt minimal, LoRA Qwen3-1.7B con packing Unsloth
+    (run storica), classiche + SLM constrained. Run eseguita su Studio GPU.
+  sagemaker_instance_type: ml.g5.2xlarge
+
 scope:
   macro_category: documentazione_medica
 

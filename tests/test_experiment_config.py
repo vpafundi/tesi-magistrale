@@ -61,6 +61,29 @@ def test_unsloth_packing_from_yaml(monkeypatch: pytest.MonkeyPatch, name: str, p
     assert cfg.training.unsloth.max_seq_len == (None if name.startswith("holdout_s42") else 8192)
 
 
+def test_experiment_meta_from_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TESI_REPO_ROOT", str(ROOT))
+    monkeypatch.setenv("TESI_DATA_DIR", str(ROOT / "data"))
+    monkeypatch.setenv("TESI_OUTPUT_DIR", str(ROOT / "outputs"))
+    path = ROOT / "configs/experiments/holdout_curated_v1__documentazione_medica_tfidf_tuned.yaml"
+    cfg = ExperimentConfig.from_dict(load_merged_experiment_dict(path))
+    assert "Optuna" in cfg.meta.description
+    assert cfg.meta.sagemaker_instance_type == "ml.c6i.4xlarge"
+
+
+def test_classic_runs_spec_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TESI_REPO_ROOT", str(ROOT))
+    monkeypatch.setenv("TESI_DATA_DIR", str(ROOT / "data"))
+    monkeypatch.setenv("TESI_OUTPUT_DIR", str(ROOT / "outputs"))
+    path = ROOT / "configs/experiments/holdout_curated_v1__documentazione_medica_tfidf_tuned.yaml"
+    if not path.is_file():
+        pytest.skip("tfidf tuned yaml missing")
+    cfg = ExperimentConfig.from_dict(load_merged_experiment_dict(path))
+    assert cfg.training.enabled is False
+    assert cfg.runs.classic[0].method == "tfidf_logreg_tuned"
+    assert cfg.runs.classic[0].params["tuning"]["n_trials"] == 50
+
+
 def test_canonical_config_hash_stable() -> None:
     cfg1 = {"b": 2, "a": {"z": 1, "y": 2}}
     cfg2 = {"a": {"y": 2, "z": 1}, "b": 2}

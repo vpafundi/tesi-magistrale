@@ -1,6 +1,10 @@
 experiment_id: holdout_s42_enriched_v1
 extends: ../base.yaml
 
+meta:
+  description: Esperimento enriched_v1 su corpus sample legacy (variante storica).
+  sagemaker_instance_type: ml.g5.2xlarge
+
 dataset:
   path: data/df_sample_all.parquet
 

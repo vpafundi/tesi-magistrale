@@ -2,6 +2,11 @@
 experiment_id: holdout_s42__documentazione_medica_enriched
 extends: holdout_s42_minimal.yaml
 
+meta:
+  description: >
+    Doc-med s42 con prompt enriched_v1, resampling train e LoRA; candidato produzione v2.
+  sagemaker_instance_type: ml.g5.2xlarge
+
 scope:
   macro_category: documentazione_medica
 

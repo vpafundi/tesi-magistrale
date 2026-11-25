@@ -303,6 +303,10 @@ def print_prepare_summary(ctx: ExperimentContext) -> None:
     seq_mode = ctx.cfg.sequence.max_seq_len_mode
     log = ctx.logger
     log.info("prepare summary: %s -> %s", ctx.cfg.experiment_id, ctx.paths.dir)
+    if ctx.cfg.meta.description:
+        log.info("  description: %s", ctx.cfg.meta.description.replace("\n", " ").strip())
+    if ctx.cfg.meta.sagemaker_instance_type:
+        log.info("  sagemaker_instance_type: %s", ctx.cfg.meta.sagemaker_instance_type)
     log.info(
         "  config_hash=%s splits_hash=%s max_seq_len=%s (%s)",
         ctx.config_hash,

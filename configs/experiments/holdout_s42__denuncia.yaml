@@ -1,6 +1,10 @@
 experiment_id: holdout_s42__denuncia
 extends: holdout_s42_minimal.yaml
 
+meta:
+  description: Macro denuncia su split s42; LoRA se abilitato in extends.
+  sagemaker_instance_type: ml.g5.2xlarge
+
 scope:
   macro_category: denuncia
 

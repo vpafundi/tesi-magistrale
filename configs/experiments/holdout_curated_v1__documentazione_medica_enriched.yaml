@@ -2,6 +2,11 @@
 experiment_id: holdout_curated_v1__documentazione_medica_enriched
 extends: holdout_curated_v1__documentazione_medica.yaml
 
+meta:
+  description: >
+    Come minimal curated ma prompt enriched_v1, max_seq_len manual_plus_prompt, SFT senza packing.
+  sagemaker_instance_type: ml.g5.2xlarge
+
 prompt:
   version: enriched_v1
 

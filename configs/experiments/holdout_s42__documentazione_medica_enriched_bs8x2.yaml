@@ -2,6 +2,10 @@
 experiment_id: holdout_s42__documentazione_medica_enriched_bs8x2
 extends: holdout_s42__documentazione_medica_enriched.yaml
 
+meta:
+  description: Come enriched doc-med s42 con batch Unsloth 8×2 (effettivo 16).
+  sagemaker_instance_type: ml.g5.2xlarge
+
 training:
   unsloth:
     batch_size: 8
