@@ -1,0 +1,4 @@
+# Ablation del minimal: stessi split, prompt e iperparametri, ma SFT senza packing
+# (1 riga train.jsonl = 1 esempio). Confrontabile con holdout_curated_v1__documentazione_medica.
+experiment_id: holdout_curated_v1__documentazione_medica_nopack
+extends: holdout_curated_v1__documentazione_medica.yaml

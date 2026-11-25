@@ -1,0 +1,31 @@
+# Curated corpus, prompt minimal, LoRA senza resampling train (tutti i record train scoped).
+experiment_id: holdout_curated_v1__documentazione_medica
+extends: holdout_curated_v1.yaml
+
+scope:
+  macro_category: documentazione_medica
+
+split:
+  assignment_from: holdout_curated_v1
+
+prompt:
+  version: minimal
+
+sequence:
+  max_seq_len_mode: manual
+  max_seq_len: 15360
+
+runs:
+  slm:
+    - model: Qwen/Qwen3-1.7B
+      modes: [constrained]
+
+training:
+  enabled: true
+  base_model: Qwen/Qwen3-1.7B
+  sampling:
+    enabled: false
+  unsloth:
+    max_seq_len: 8192
+    batch_size: 8
+    grad_accum: 2

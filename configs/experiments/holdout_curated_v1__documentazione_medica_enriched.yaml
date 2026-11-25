@@ -1,0 +1,10 @@
+# Stesso split e train del minimal; prompt enriched_v1 e budget token manual_plus_prompt.
+experiment_id: holdout_curated_v1__documentazione_medica_enriched
+extends: holdout_curated_v1__documentazione_medica.yaml
+
+prompt:
+  version: enriched_v1
+
+sequence:
+  max_seq_len_mode: manual_plus_prompt
+  max_seq_len: 15360

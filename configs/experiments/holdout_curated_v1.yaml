@@ -1,0 +1,29 @@
+# Master split sul parquet post-EDA (data/curated/curation_manifest.json).
+# Solo prepare; i figli scoped usano split.assignment_from.
+experiment_id: holdout_curated_v1
+extends: ../base.yaml
+
+dataset:
+  path: curated/df_segments_curated_v1.parquet
+
+split:
+  strategy: holdout
+  seed: 42
+  test_frac: 0.07
+  val_frac: 0.05
+  assignment_from: null
+
+prompt:
+  version: minimal
+
+sequence:
+  max_seq_len_mode: manual
+  max_seq_len: 15360
+  tokenizers:
+    - Qwen/Qwen3-1.7B
+
+runs:
+  slm: []
+
+training:
+  enabled: false
