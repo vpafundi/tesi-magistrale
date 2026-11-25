@@ -23,6 +23,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--grad-accum", type=int, default=4)
     p.add_argument("--learning-rate", type=float, default=2e-4)
     p.add_argument("--early-stopping-patience", type=int, default=2)
+    p.add_argument(
+        "--packing",
+        action="store_true",
+        help="Lascia attivo auto packing / padding-free di Unsloth (default: 1 riga = 1 esempio)",
+    )
     p.add_argument("--metrics-out", required=True)
     return p.parse_args(argv)
 
@@ -33,12 +38,13 @@ def main(argv: list[str] | None = None) -> None:
     log = setup_pipeline_logger()
     args = _parse_args(argv)
     log.info(
-        "run_unsloth: start base_model=%s train=%s val=%s epochs=%s max_seq_len=%s out=%s",
+        "run_unsloth: start base_model=%s train=%s val=%s epochs=%s max_seq_len=%s packing=%s out=%s",
         args.base_model,
         args.train_jsonl,
         args.val_jsonl,
         args.epochs,
         args.max_seq_len,
+        args.packing,
         args.output_dir,
     )
     out_dir = Path(args.output_dir)
@@ -95,7 +101,8 @@ def main(argv: list[str] | None = None) -> None:
     log.info("run_unsloth: after chat template map train=%s val=%s", len(train_ds), len(eval_ds) if eval_ds else 0)
 
     # Unsloth 2026+ auto-enables padding-free (and may pack) → "Num examples" ≪ jsonl rows.
-    # One SFT row per segment: packing off, padding_free off, block auto packing.
+    # Without --packing: packing off, padding_free off, block auto packing (one SFT row per segment).
+    packing_kwargs = {} if args.packing else {"packing": False, "padding_free": False}
     sft_args = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -110,10 +117,10 @@ def main(argv: list[str] | None = None) -> None:
         greater_is_better=False,
         max_length=args.max_seq_len,
         dataset_text_field="text",
-        packing=False,
-        padding_free=False,
+        **packing_kwargs,
     )
-    setattr(sft_args, "_unsloth_disable_auto_packing", True)
+    if not args.packing:
+        setattr(sft_args, "_unsloth_disable_auto_packing", True)
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
@@ -128,7 +135,7 @@ def main(argv: list[str] | None = None) -> None:
         getattr(trainer.args, "packing", None),
         getattr(trainer.args, "max_length", None),
     )
-    if n_train_eff < len(train_ds):
+    if not args.packing and n_train_eff < len(train_ds):
         log.error(
             "run_unsloth: train_dataset shorter than jsonl (%s < %s); packing still active?",
             n_train_eff,
@@ -157,6 +164,7 @@ def main(argv: list[str] | None = None) -> None:
         "jsonl_rows_train": len(train_ds),
         "sft_train_examples": n_train_eff,
         "max_seq_len": args.max_seq_len,
+        "packing": args.packing,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     metrics_path.parent.mkdir(parents=True, exist_ok=True)

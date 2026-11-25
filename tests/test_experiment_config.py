@@ -42,6 +42,25 @@ def test_macro_scoped_yaml_merges(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.training.enabled is True
 
 
+@pytest.mark.parametrize(
+    ("name", "packing"),
+    [
+        ("holdout_curated_v1__documentazione_medica", True),
+        ("holdout_curated_v1__documentazione_medica_nopack", False),
+        ("holdout_curated_v1__documentazione_medica_enriched", False),
+        ("holdout_s42__denuncia", False),
+    ],
+)
+def test_unsloth_packing_from_yaml(monkeypatch: pytest.MonkeyPatch, name: str, packing: bool) -> None:
+    monkeypatch.setenv("TESI_REPO_ROOT", str(ROOT))
+    monkeypatch.setenv("TESI_DATA_DIR", str(ROOT / "data"))
+    monkeypatch.setenv("TESI_OUTPUT_DIR", str(ROOT / "outputs"))
+    path = ROOT / f"configs/experiments/{name}.yaml"
+    cfg = ExperimentConfig.from_dict(load_merged_experiment_dict(path))
+    assert cfg.training.unsloth.packing is packing
+    assert cfg.training.unsloth.max_seq_len == (None if name.startswith("holdout_s42") else 8192)
+
+
 def test_canonical_config_hash_stable() -> None:
     cfg1 = {"b": 2, "a": {"z": 1, "y": 2}}
     cfg2 = {"a": {"y": 2, "z": 1}, "b": 2}

@@ -25,17 +25,14 @@ class SubprocessTrainRunner:
         self.python = python or sys.executable
         self.logger = logger or get_pipeline_logger()
 
-    def launch(self, cmd: list[str], *, dry_run: bool = False) -> None:
+    def launch(self, cmd: list[str], *, packing: bool = False, dry_run: bool = False) -> None:
         if dry_run:
             self.logger.info("train dry-run: %s", " ".join(cmd))
             return
-        self.logger.info("train launch: %s", " ".join(cmd))
-        env = {
-            **os.environ,
-            "PYTHONUNBUFFERED": "1",
-            # Unsloth: avoid auto padding-free / packed batches (1 train row = 1 segment).
-            "UNSLOTH_DISABLE_AUTO_PADDING_FREE": "1",
-        }
+        self.logger.info("train launch: packing=%s %s", packing, " ".join(cmd))
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        if not packing:
+            env["UNSLOTH_DISABLE_AUTO_PADDING_FREE"] = "1"
         t0 = time.perf_counter()
         proc = subprocess.run(cmd, check=False, env=env)
         elapsed = time.perf_counter() - t0
@@ -115,8 +112,10 @@ class TrainLoRAPipeline:
             "--metrics-out",
             str(metrics_path),
         ]
+        if u.packing:
+            cmd.append("--packing")
         self.runner.logger = ctx.logger
-        self.runner.launch(cmd, dry_run=ctx.dry_run_slm)
+        self.runner.launch(cmd, packing=u.packing, dry_run=ctx.dry_run_slm)
 
         manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else {}
         manifest["adapter_path"] = str(adapter_dir)

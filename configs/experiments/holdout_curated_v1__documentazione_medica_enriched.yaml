@@ -1,4 +1,4 @@
-# Stesso split e train del minimal; prompt enriched_v1 e budget token manual_plus_prompt.
+# Stesso split e train del minimal; prompt enriched_v1, budget token manual_plus_prompt, SFT senza packing.
 experiment_id: holdout_curated_v1__documentazione_medica_enriched
 extends: holdout_curated_v1__documentazione_medica.yaml
 
@@ -8,3 +8,7 @@ prompt:
 sequence:
   max_seq_len_mode: manual_plus_prompt
   max_seq_len: 15360
+
+training:
+  unsloth:
+    packing: false

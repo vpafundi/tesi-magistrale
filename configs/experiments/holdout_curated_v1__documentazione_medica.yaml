@@ -29,3 +29,4 @@ training:
     max_seq_len: 8192
     batch_size: 8
     grad_accum: 2
+    packing: true   # run originale: auto packing Unsloth (7280 esempi/epoca)

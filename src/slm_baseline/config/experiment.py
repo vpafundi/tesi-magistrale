@@ -181,6 +181,8 @@ class UnslothTrainingConfig:
     learning_rate: float = 2.0e-4
     max_seq_len: int | None = None
     early_stopping_patience: int = 2
+    # False: 1 riga train.jsonl = 1 esempio SFT. True: auto packing / padding-free di Unsloth.
+    packing: bool = False
 
 
 @dataclass
