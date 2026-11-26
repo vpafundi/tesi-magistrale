@@ -113,6 +113,72 @@ def test_finalize_trial_params_maps_class_weight_sentinel() -> None:
     assert finalize_trial_params({"class_weight": "balanced"})["class_weight"] == "balanced"
 
 
+def test_tfidf_model_save_load_roundtrip(tmp_path: Path) -> None:
+    from slm_baseline.evaluation.classic.persistence import (
+        classic_model_ready,
+        load_tfidf_model,
+        save_tfidf_model,
+    )
+
+    train, _, _ = _synthetic_frames()
+    tuner = TfidfLogRegTunable(macro_scope="documentazione_medica", seed=3)
+    model = tuner.refit(train, {"features": "char35", "C": 1.0, "class_weight": "balanced"})
+    save_tfidf_model(
+        tmp_path,
+        "tfidf_logreg_tuned",
+        model,
+        method="tfidf_logreg_tuned",
+        macro_scope="documentazione_medica",
+        seed=3,
+        params={"features": "char35", "C": 1.0, "class_weight": "balanced"},
+    )
+    assert classic_model_ready(tmp_path, "tfidf_logreg_tuned")
+    loaded, meta = load_tfidf_model(tmp_path, "tfidf_logreg_tuned")
+    assert meta["params"]["features"] == "char35"
+    assert loaded.clf is not None
+
+
+def test_tune_and_predict_uses_saved_model_without_optuna(tmp_path: Path) -> None:
+    from slm_baseline.evaluation.classic.persistence import classic_model_ready
+
+    train, val, test = _synthetic_frames()
+    data = ClassicEvalData(
+        train_df=train,
+        val_df=val,
+        test_df=test,
+        seed=42,
+        macro_scope="documentazione_medica",
+        train_df_for_mask=train,
+    )
+    method = TfidfLogRegTunable(macro_scope="documentazione_medica", seed=42, cache_dir=tmp_path / "cache")
+    spec_params = {
+        "tuning": {"strategy": "val", "n_trials": 2, "seed": 42, "refit_on": "train"},
+        "search_space": {"features": ["char35"], "C": {"low": 0.5, "high": 2.0, "log": False}},
+    }
+    logger = logging.getLogger("test_tfidf_tuning")
+    out1 = tune_and_predict(
+        method,
+        data,
+        spec_params=spec_params,
+        artifacts_dir=tmp_path,
+        slug="tfidf_logreg_tuned",
+        logger=logger,
+        rerun=True,
+    )
+    assert classic_model_ready(tmp_path, "tfidf_logreg_tuned")
+    out2 = tune_and_predict(
+        method,
+        data,
+        spec_params=spec_params,
+        artifacts_dir=tmp_path,
+        slug="tfidf_logreg_tuned",
+        logger=logger,
+        rerun=False,
+    )
+    assert out2.extra_run_info.get("loaded_from_disk") is True
+    pd.testing.assert_series_equal(out1.pred, out2.pred)
+
+
 def test_tfidf_refit_accepts_optuna_class_weight_sentinel() -> None:
     train, _, _ = _synthetic_frames()
     tuner = TfidfLogRegTunable(macro_scope="documentazione_medica", seed=7)

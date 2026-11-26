@@ -118,7 +118,7 @@ Righe utili: `tuning trial 12/50 fold 3/5`, `COMPLETE | cv_f1=... | ETA`, `tunin
 
 **Resume** se interrompi: rilancia lo stesso comando `classic` **senza** `--rerun`. Optuna riprende da `runs/optuna__tfidf_logreg_tuned.log` (journal). Con `--rerun` si cancella lo studio e si riparte da zero.
 
-**Artefatti:** `runs/tuning__tfidf_logreg_tuned.csv/json`, `runs/optuna__tfidf_logreg_tuned.log`, predizioni con colonne `proba__*`. Backup su S3: `uv run python -m slm_baseline.cli sync --config configs/experiments/${FIG}.yaml`.
+**Artefatti:** `runs/tuning__*.csv/json`, `runs/optuna__*.log`, `runs/model__*.joblib` + `.json`, **`runs/model_card__*.json`** + **`.md`** (scheda riassuntiva), predizioni `proba__*`. LoRA: `adapters/<model>__lora/` con **`MODEL_CARD.json`** / **`MODEL_CARD.md`**, più `training/model_card__*.json` e `training/metrics__*.json`. Backup su S3: `uv run python -m slm_baseline.cli sync --config configs/experiments/${FIG}.yaml`.
 
 ## Opzione A — Solo CLI (consigliata)
 

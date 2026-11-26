@@ -78,6 +78,46 @@ def predict_random(test_df: pd.DataFrame, seed: int = 42) -> pd.Series:
     return test_df["macro_category"].map(lambda m: rng.choice(MICRO_PER_MACRO[m]))
 
 
+FIXED_TFIDF_LOGREG_PARAMS = {
+    "features": "char35",
+    "C": 4.0,
+    "class_weight": "balanced",
+}
+
+
+def fit_tfidf_logreg(
+    train_df: pd.DataFrame,
+    seed: int = 42,
+    *,
+    macro_scope: str | None = None,
+):
+    """Fit TF-IDF + LogReg con iperparametri fissi del baseline ``tfidf_logreg``."""
+    from .tuning.tfidf_logreg import TfidfLogRegTunable
+
+    tuner = TfidfLogRegTunable(macro_scope=macro_scope, seed=seed, cache_dir=None)
+    return tuner.refit(train_df, dict(FIXED_TFIDF_LOGREG_PARAMS))
+
+
+def predict_tfidf_logreg_with_proba(
+    model,
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    *,
+    macro_scope: str | None = None,
+) -> tuple[pd.Series, pd.DataFrame]:
+    from .tuning.tfidf_logreg import TfidfLogRegTunable
+
+    tuner = TfidfLogRegTunable(macro_scope=macro_scope, seed=0, cache_dir=None)
+    proba, classes = tuner.predict_proba(model, test_df)
+    preds = masked_predictions_from_proba(
+        proba, classes, test_df, macro_scope=macro_scope, train_df=train_df
+    )
+    pred_series = pd.Series(preds, index=test_df.index)
+    proba_cols = {f"proba__{c}": proba[:, i] for i, c in enumerate(classes)}
+    proba_df = pd.DataFrame(proba_cols, index=test_df.index)
+    return pred_series, proba_df
+
+
 def predict_tfidf_logreg(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -95,18 +135,6 @@ def predict_tfidf_logreg(
     Returns:
         Serie di micro predette (solo etichette nel perimetro della macro).
     """
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.linear_model import LogisticRegression
-
-    vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True, min_df=2, max_features=300_000)
-    x_train = vec.fit_transform(tfidf_docs(train_df, macro_scope))
-    y_train = tfidf_labels(train_df, macro_scope)
-    clf = LogisticRegression(max_iter=2000, C=4.0, class_weight="balanced", random_state=seed)
-    clf.fit(x_train, y_train)
-
-    proba = clf.predict_proba(vec.transform(tfidf_docs(test_df, macro_scope)))
-    classes = list(clf.classes_)
-    preds = masked_predictions_from_proba(
-        proba, classes, test_df, macro_scope=macro_scope, train_df=train_df
-    )
-    return pd.Series(preds, index=test_df.index)
+    model = fit_tfidf_logreg(train_df, seed, macro_scope=macro_scope)
+    pred, _ = predict_tfidf_logreg_with_proba(model, train_df, test_df, macro_scope=macro_scope)
+    return pred

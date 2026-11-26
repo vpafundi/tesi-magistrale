@@ -17,6 +17,13 @@ from optuna.samplers import TPESampler
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedGroupKFold
 
+from ..persistence import (
+    classic_model_ready,
+    clear_classic_model,
+    load_tfidf_model,
+    model_joblib_path,
+    save_tfidf_model,
+)
 from ..predictors import masked_predictions_from_proba
 from .protocols import TunableMethod
 from .storage import clear_journal_storage, study_storage
@@ -96,6 +103,30 @@ def tune_and_predict(
     """Run Optuna study, refit best config, predict on test."""
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
+    method_name = getattr(method, "name", type(method).__name__)
+    if rerun:
+        clear_classic_model(artifacts_dir, slug)
+    elif classic_model_ready(artifacts_dir, slug):
+        logger.info("tuning: load saved model slug=%s (skip Optuna + refit)", slug)
+        model, meta = load_tfidf_model(artifacts_dir, slug)
+        proba, classes = method.predict_proba(model, data.test_df)  # type: ignore[attr-defined]
+        preds = _preds_from_proba(proba, classes, data.test_df, data)
+        pred_series = pd.Series(preds, index=data.test_df.index)
+        proba_cols = {f"proba__{c}": proba[:, i] for i, c in enumerate(classes)}
+        proba_df = pd.DataFrame(proba_cols, index=data.test_df.index)
+        tuning_path = artifacts_dir / f"tuning__{slug}.json"
+        tuning_json = None
+        if tuning_path.is_file():
+            tuning_json = json.loads(tuning_path.read_text(encoding="utf-8"))
+        extra: dict[str, Any] = {
+            "best_params": meta.get("params") or meta.get("best_params"),
+            "classic_model": str(model_joblib_path(artifacts_dir, slug)),
+            "loaded_from_disk": True,
+        }
+        if tuning_json:
+            extra["tuning"] = tuning_json
+        return ClassicTuningResult(pred=pred_series, proba_df=proba_df, extra_run_info=extra)
+
     tuning = _default_tuning_cfg(spec_params)
     search_space = dict(spec_params.get("search_space") or {})
     n_trials = int(tuning["n_trials"])
@@ -106,6 +137,7 @@ def tune_and_predict(
         clear_journal_storage(journal_path)
         for p in artifacts_dir.glob(f"tuning__{slug}.*"):
             p.unlink(missing_ok=True)
+        clear_classic_model(artifacts_dir, slug)
 
     storage = study_storage(tuning.get("storage"), journal_path=journal_path)
     sampler = TPESampler(seed=int(tuning["seed"]))
@@ -267,5 +299,21 @@ def tune_and_predict(
     json_path = artifacts_dir / f"tuning__{slug}.json"
     json_path.write_text(json.dumps(tuning_json, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    extra = {"tuning": tuning_json, "best_params": best_params}
+    joblib_path, meta_path = save_tfidf_model(
+        artifacts_dir,
+        slug,
+        final_model,  # type: ignore[arg-type]
+        method=method_name,
+        macro_scope=data.macro_scope,
+        seed=data.seed,
+        params=best_params,
+        extra={"best_params": best_params, "tuning": tuning_json},
+    )
+    logger.info("tuning: saved model %s meta=%s", joblib_path.name, meta_path.name)
+
+    extra = {
+        "tuning": tuning_json,
+        "best_params": best_params,
+        "classic_model": str(joblib_path),
+    }
     return ClassicTuningResult(pred=pred_series, proba_df=proba_df, extra_run_info=extra)

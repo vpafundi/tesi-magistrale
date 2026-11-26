@@ -12,7 +12,20 @@ import pandas as pd
 
 from ...config.experiment import ClassicMethodSpec
 from ...pipeline.exceptions import UnknownClassicMethodError
-from .predictors import predict_majority, predict_random, predict_tfidf_logreg
+from .persistence import (
+    classic_model_ready,
+    clear_classic_model,
+    load_tfidf_model,
+    save_tfidf_model,
+)
+from .predictors import (
+    FIXED_TFIDF_LOGREG_PARAMS,
+    fit_tfidf_logreg,
+    predict_majority,
+    predict_random,
+    predict_tfidf_logreg,
+    predict_tfidf_logreg_with_proba,
+)
 from .tuning import ClassicEvalData, tune_and_predict
 from .tuning.tfidf_logreg import TfidfLogRegTunable
 
@@ -105,5 +118,53 @@ class ClassicMethodRegistry:
             msg = f"Metodo classic sconosciuto: {method!r}"
             logger.error("classic registry: %s", msg)
             raise UnknownClassicMethodError(msg)
+
+        if method == "tfidf_logreg":
+            if rerun:
+                clear_classic_model(artifacts_dir, slug)
+            elif classic_model_ready(artifacts_dir, slug):
+                logger.info("classic: load saved model slug=%s (skip fit)", slug)
+                model, _meta = load_tfidf_model(artifacts_dir, slug)
+                pred, proba_df = predict_tfidf_logreg_with_proba(
+                    model,
+                    data.train_df,
+                    data.test_df,
+                    macro_scope=data.macro_scope,
+                )
+                return ClassicResult(
+                    pred=pred,
+                    proba_df=proba_df,
+                    extra_run_info={
+                        "best_params": FIXED_TFIDF_LOGREG_PARAMS,
+                        "classic_model": str(artifacts_dir / f"model__{slug}.joblib"),
+                        "loaded_from_disk": True,
+                    },
+                )
+            model = fit_tfidf_logreg(data.train_df, data.seed, macro_scope=data.macro_scope)
+            pred, proba_df = predict_tfidf_logreg_with_proba(
+                model,
+                data.train_df,
+                data.test_df,
+                macro_scope=data.macro_scope,
+            )
+            joblib_path, _ = save_tfidf_model(
+                artifacts_dir,
+                slug,
+                model,
+                method="tfidf_logreg",
+                macro_scope=data.macro_scope,
+                seed=data.seed,
+                params=FIXED_TFIDF_LOGREG_PARAMS,
+            )
+            logger.info("classic: saved model %s", joblib_path.name)
+            return ClassicResult(
+                pred=pred,
+                proba_df=proba_df,
+                extra_run_info={
+                    "best_params": FIXED_TFIDF_LOGREG_PARAMS,
+                    "classic_model": str(joblib_path),
+                },
+            )
+
         pred = self.predict(method, data.train_df, data.test_df, data.seed, macro_scope=data.macro_scope)
         return ClassicResult(pred=pred)

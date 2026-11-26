@@ -5,7 +5,8 @@ from __future__ import annotations
 import pandas as pd
 
 from ...artifacts.io import load_json
-from ...artifacts.reporting import save_run
+from ...artifacts.model_card import model_card_json_path, write_classic_model_card_from_run
+from ...artifacts.reporting import load_runs, save_run
 from ...data.core import apply_kfold_assignments, attach_splits, load_segments_cured
 from ...evaluation.classic.registry import ClassicMethodRegistry
 from ...pipeline.context import ExperimentContext
@@ -142,6 +143,23 @@ class ClassicEvaluatePipeline:
                 slug = classic_slug(method, fold_id)
                 metrics_path = ctx.paths.runs / f"metrics__{slug}.json"
                 if metrics_path.is_file() and not ctx.rerun:
+                    card_path = model_card_json_path(ctx.paths.runs, slug)
+                    if not card_path.is_file():
+                        _, runs_payload = load_runs(ctx.paths.runs)
+                        if slug in runs_payload:
+                            ri = runs_payload[slug]["run_info"]
+                            mk = runs_payload[slug]["metrics"]
+                            write_classic_model_card_from_run(
+                                ctx.paths.runs,
+                                slug,
+                                experiment_id=ctx.cfg.experiment_id,
+                                method=method,
+                                run_info=ri,
+                                metrics=mk,
+                                manifest=manifest,
+                                description=ctx.cfg.meta.description,
+                            )
+                            ctx.logger.info("classic: backfill model_card %s", slug)
                     ctx.logger.info("classic: skip %s (metrics exist)", slug)
                     continue
                 result = self.registry.run(
@@ -162,7 +180,7 @@ class ClassicEvaluatePipeline:
                 if result.proba_df is not None:
                     pred_df = pred_df.join(result.proba_df, how="left")
                 run_info = {
-                    "model": None,
+                    "model": result.extra_run_info.get("classic_model"),
                     "mode": f"classic_{method}",
                     "split": eval_split,
                     "max_seq_len": run_cfg.get("max_seq_len"),
@@ -172,12 +190,23 @@ class ClassicEvaluatePipeline:
                 }
                 ctx.paths.runs.mkdir(parents=True, exist_ok=True)
                 metrics = save_run(ctx.paths.runs, slug, pred_df, run_info)
+                card_json, _card_md = write_classic_model_card_from_run(
+                    ctx.paths.runs,
+                    slug,
+                    experiment_id=ctx.cfg.experiment_id,
+                    method=method,
+                    run_info=run_info,
+                    metrics=metrics,
+                    manifest=manifest,
+                    description=ctx.cfg.meta.description,
+                )
                 ctx.logger.info(
-                    "classic: done %s acc=%.4f macro_f1=%.4f n=%s",
+                    "classic: done %s acc=%.4f macro_f1=%.4f n=%s model_card=%s",
                     slug,
                     metrics["accuracy"],
                     metrics["macro_f1"],
                     metrics["n"],
+                    card_json.name,
                 )
 
         if strategy == "kfold":

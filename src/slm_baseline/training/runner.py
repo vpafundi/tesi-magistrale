@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 
 from ..artifacts.io import load_json, write_json
+from ..artifacts.model_card import build_lora_model_card, write_lora_model_card
+from ..evaluation.classic.persistence import lora_adapter_ready
 from ..logging.core import get_pipeline_logger
 from ..pipeline.context import ExperimentContext
 from ..pipeline.exceptions import PrepareArtifactsMissingError, TrainRunnerError
@@ -18,6 +20,45 @@ from .dataset import export_sft_jsonl
 
 def train_slug(base_model: str) -> str:
     return f"{base_model.split('/')[-1]}__lora"
+
+
+def _emit_lora_model_card(
+    ctx: ExperimentContext,
+    *,
+    slug: str,
+    base_model: str,
+    adapter_dir: Path,
+    metrics_path: Path,
+    run_cfg: dict,
+) -> None:
+    if not metrics_path.is_file():
+        return
+    training_payload = load_json(metrics_path)
+    manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else {}
+    u = ctx.cfg.training.unsloth
+    card = build_lora_model_card(
+        experiment_id=ctx.cfg.experiment_id,
+        slug=slug,
+        base_model=base_model,
+        adapter_dir=adapter_dir,
+        training_payload=training_payload if isinstance(training_payload, dict) else {},
+        manifest=manifest,
+        run_cfg=run_cfg,
+        description=ctx.cfg.meta.description,
+        unsloth_cfg={
+            "lora_r": u.lora_r,
+            "lora_alpha": u.lora_alpha,
+            "epochs": u.epochs,
+            "batch_size": u.batch_size,
+            "grad_accum": u.grad_accum,
+            "learning_rate": u.learning_rate,
+            "early_stopping_patience": u.early_stopping_patience,
+            "packing": u.packing,
+        },
+    )
+    training_dir = ctx.exp_dir / "training"
+    write_lora_model_card(adapter_dir, training_dir, slug, card)
+    ctx.logger.info("train: model_card %s", adapter_dir / "MODEL_CARD.md")
 
 
 class SubprocessTrainRunner:
@@ -74,9 +115,29 @@ class TrainLoRAPipeline:
         slug = train_slug(base_model)
         adapter_dir = ctx.exp_dir / ctx.cfg.training.output_subdir / slug
         metrics_path = ctx.exp_dir / "training" / f"metrics__{slug}.json"
-        if metrics_path.is_file() and not ctx.rerun:
-            ctx.logger.info("train: skip %s (metrics exist)", slug)
+        adapter_ok = lora_adapter_ready(adapter_dir)
+        if not ctx.rerun and (metrics_path.is_file() or adapter_ok):
+            reason = "metrics exist" if metrics_path.is_file() else "adapter on disk"
+            ctx.logger.info("train: skip %s (%s)", slug, reason)
+            if adapter_ok:
+                manifest = load_json(ctx.paths.manifest) if ctx.paths.manifest.is_file() else {}
+                manifest["adapter_path"] = str(adapter_dir)
+                manifest["training_slug"] = slug
+                write_json(ctx.paths.manifest, manifest)
+            from ..artifacts.model_card import lora_model_card_json
+
+            if not lora_model_card_json(adapter_dir).is_file() and metrics_path.is_file():
+                _emit_lora_model_card(
+                    ctx, slug=slug, base_model=base_model, adapter_dir=adapter_dir,
+                    metrics_path=metrics_path, run_cfg=run_cfg,
+                )
             return adapter_dir
+
+        if ctx.rerun and adapter_dir.is_dir():
+            import shutil
+
+            shutil.rmtree(adapter_dir)
+            ctx.logger.info("train: cleared adapter dir for rerun %s", adapter_dir)
 
         max_seq = ctx.cfg.training.unsloth.max_seq_len or int(run_cfg["max_seq_len"])
         u = ctx.cfg.training.unsloth
@@ -121,4 +182,8 @@ class TrainLoRAPipeline:
         manifest["adapter_path"] = str(adapter_dir)
         manifest["training_slug"] = slug
         write_json(ctx.paths.manifest, manifest)
+        _emit_lora_model_card(
+            ctx, slug=slug, base_model=base_model, adapter_dir=adapter_dir,
+            metrics_path=metrics_path, run_cfg=run_cfg,
+        )
         return adapter_dir
