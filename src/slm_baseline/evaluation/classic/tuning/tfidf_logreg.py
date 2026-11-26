@@ -46,6 +46,21 @@ class TfidfLogRegModel:
     clf: LogisticRegression
 
 
+def finalize_trial_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Map Optuna-stored categoricals back to sklearn-ready values."""
+    out = dict(params)
+    if out.get("class_weight") == "__none__":
+        out["class_weight"] = None
+    return out
+
+
+def _class_weight(params: dict[str, Any]) -> str | dict[str, float] | None:
+    cw = params.get("class_weight")
+    if cw == "__none__":
+        return None
+    return cw
+
+
 class FoldMatrixCache:
     """Disk cache for sparse TF-IDF matrices per (fold_key, features)."""
 
@@ -131,6 +146,9 @@ class TfidfLogRegTunable:
         self._cache = FoldMatrixCache(cache_dir, logger=logger)
         self.logger = logger or logging.getLogger("slm_baseline.pipeline")
 
+    def finalize_trial_params(self, params: dict[str, Any]) -> dict[str, Any]:
+        return finalize_trial_params(params)
+
     def suggest_params(self, trial: Any, search_space: dict[str, Any]) -> dict[str, Any]:
         features_list = search_space.get("features") or list(FEATURE_PRESETS.keys())
         cw_list = search_space.get("class_weight") or ["balanced", None]
@@ -168,7 +186,7 @@ class TfidfLogRegTunable:
         clf = LogisticRegression(
             max_iter=2000,
             C=float(params["C"]),
-            class_weight=params.get("class_weight"),
+            class_weight=_class_weight(params),
             random_state=self.seed,
         )
         t0 = time.perf_counter()
@@ -199,7 +217,7 @@ class TfidfLogRegTunable:
         clf = LogisticRegression(
             max_iter=2000,
             C=float(params["C"]),
-            class_weight=params.get("class_weight"),
+            class_weight=_class_weight(params),
             random_state=self.seed,
         )
         t0 = time.perf_counter()
@@ -229,6 +247,7 @@ class TfidfLogRegTunable:
         *,
         fold_key: str = "refit",
     ) -> TfidfLogRegModel:
+        params = finalize_trial_params(params)
         features = params["features"]
         t0 = time.perf_counter()
         vec = build_vectorizer(features)
@@ -237,7 +256,7 @@ class TfidfLogRegTunable:
         clf = LogisticRegression(
             max_iter=2000,
             C=float(params["C"]),
-            class_weight=params.get("class_weight"),
+            class_weight=_class_weight(params),
             random_state=self.seed,
         )
         clf.fit(x_train, y_train)

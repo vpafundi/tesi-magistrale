@@ -15,6 +15,10 @@ from slm_baseline.config.experiment import (
 from slm_baseline.evaluation.classic.predictors import predict_tfidf_logreg
 from slm_baseline.evaluation.classic.tuning import ClassicEvalData, tune_and_predict
 from slm_baseline.evaluation.classic.tuning.dummy import DummyTunable
+from slm_baseline.evaluation.classic.tuning.tfidf_logreg import (
+    TfidfLogRegTunable,
+    finalize_trial_params,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -102,6 +106,21 @@ def test_dummy_tune_and_predict_val_strategy(tmp_path: Path) -> None:
     assert len(out.pred) == len(test)
     assert (tmp_path / "tuning__dummy.json").is_file()
     assert (tmp_path / "optuna__dummy.log").is_file()
+
+
+def test_finalize_trial_params_maps_class_weight_sentinel() -> None:
+    assert finalize_trial_params({"class_weight": "__none__", "C": 2.0})["class_weight"] is None
+    assert finalize_trial_params({"class_weight": "balanced"})["class_weight"] == "balanced"
+
+
+def test_tfidf_refit_accepts_optuna_class_weight_sentinel() -> None:
+    train, _, _ = _synthetic_frames()
+    tuner = TfidfLogRegTunable(macro_scope="documentazione_medica", seed=7)
+    model = tuner.refit(
+        train,
+        {"features": "char35", "C": 1.0, "class_weight": "__none__"},
+    )
+    assert model.clf is not None
 
 
 def test_tfidf_tuned_yaml_resolves(monkeypatch: pytest.MonkeyPatch) -> None:

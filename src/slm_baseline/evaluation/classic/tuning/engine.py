@@ -208,6 +208,8 @@ def tune_and_predict(
 
     best = study.best_trial
     best_params = dict(best.params)
+    if hasattr(method, "finalize_trial_params"):
+        best_params = method.finalize_trial_params(best_params)  # type: ignore[attr-defined]
     logger.info(
         "tuning study done in %.1fs | best_trial=%s best_value=%.4f params=%s",
         time.perf_counter() - t_study,
